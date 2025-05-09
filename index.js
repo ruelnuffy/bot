@@ -2,7 +2,16 @@
  *  Venille AI – WhatsApp Chat-bot  (text only)
  *  npm i whatsapp-web.js qrcode-terminal better-sqlite3
  * ───────────────────────────────────────── */
+const fs   = require('fs');
+const path = require('path');
 
+// where to store your WA session
+const sessionDir = path.join(__dirname, 'session');
+
+// ensure the folder exists
+if (!fs.existsSync(sessionDir)) {
+  fs.mkdirSync(sessionDir, { recursive: true });
+}
 const qrcode  = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Database = require('better-sqlite3');
@@ -15,6 +24,7 @@ const launchArgs = [
   '--disable-accelerated-2d-canvas',
   '--disable-gpu',
 ];
+
 // Removed duplicate client declaration to avoid redeclaration error
 
 

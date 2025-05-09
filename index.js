@@ -70,16 +70,41 @@ const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2,
 
 
 /* ═══════ 2.  Bot init ═══════ */
-const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: sessionDir }),
-  // pass the puppeteer-extra instance in:
-  puppeteer,
-  // and its launch options here:
-  puppeteerOptions: {
+ const { Client, LocalAuth } = require('whatsapp-web.js');
+ const puppeteer = require('puppeteer');
+ const { Client, LocalAuth } = require('whatsapp-web.js');
+ const puppeteer = require('puppeteer');
+
+  // …
+
+ const client = new Client({
+   authStrategy: new LocalAuth({ dataPath: sessionDir }),
+   puppeteer: {
+     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
     headless: true,
-    args: launchArgs,
-  }
-});
+    args: [
+       '--no-sandbox',
+       '--disable-setuid-sandbox',
+       '--disable-dev-shm-usage'
+     ]
+   }
+ });
+ const client = new Client({
+   authStrategy: new LocalAuth({ dataPath: sessionDir }),
+ 
+  // point whatsapp-web.js at the full puppeteer package
+   puppeteer: puppeteer,
+   // now pass *its* launch options here:
+  puppeteerOptions: {
+     headless: true,
+     args: [
+       '--no-sandbox',
+       '--disable-setuid-sandbox',
+       '--disable-dev-shm-usage'
+    ]
+   }
+ });
+
 
 const CYCLE = 28;
 const mem          = {};                 // chatId → { step , data:{} }

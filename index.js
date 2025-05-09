@@ -72,20 +72,18 @@ const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2,
 
 
  const client = new Client({
-   authStrategy: new LocalAuth({ dataPath: sessionDir }),
- 
-  // point whatsapp-web.js at the full puppeteer package
-   puppeteer: puppeteer,
-   // now pass *its* launch options here:
-  puppeteerOptions: {
-     headless: true,
-     args: [
-       '--no-sandbox',
-       '--disable-setuid-sandbox',
-       '--disable-dev-shm-usage'
+  authStrategy: new LocalAuth({ dataPath: sessionDir }),
+  puppeteer:      puppeteer,                  // ← the Puppeteer module
+  puppeteerOptions: {                         // ← the launch options
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, 
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
     ]
-   }
- });
+  }
+});
 
 
 const CYCLE = 28;

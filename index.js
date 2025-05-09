@@ -16,7 +16,7 @@ const qrcode  = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Database = require('better-sqlite3');
 const cron = require('node-cron');
-const puppeteer = require('puppeteer');
+const { executablePath: puppeteerPath } = require('puppeteer');
 const launchArgs = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
@@ -79,11 +79,12 @@ const getSymptoms = db.prepare('SELECT symptom,logged_at FROM symptoms WHERE jid
 const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2, submitted_at) VALUES (?,?,?,?)');
 
 
-
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: sessionDir }),
-  puppeteer,              // pass the puppeteer module itself
-  puppeteerOptions: {     // launch flags go here
+  puppeteer: {
+    // Option A: call puppeteer's helper
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+                    || puppeteerPath(),
     headless: true,
     args: [
       '--no-sandbox',
@@ -92,7 +93,6 @@ const client = new Client({
     ]
   }
 });
-
 
 
 const CYCLE = 28;

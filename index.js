@@ -80,13 +80,11 @@ const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2,
 
 
 
-
- const client = new Client({
+const client = new Client({
   authStrategy: new LocalAuth({ dataPath: sessionDir }),
-  puppeteer:      puppeteer,                  // ← the Puppeteer module
-  puppeteerOptions: {                         // ← the launch options
+  puppeteer,              // pass the puppeteer module itself
+  puppeteerOptions: {     // launch flags go here
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, 
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -94,6 +92,7 @@ const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2,
     ]
   }
 });
+
 
 
 const CYCLE = 28;

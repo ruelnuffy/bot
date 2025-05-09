@@ -69,26 +69,8 @@ const getSymptoms = db.prepare('SELECT symptom,logged_at FROM symptoms WHERE jid
 const addFeedback = db.prepare('INSERT INTO feedback (jid, response1, response2, submitted_at) VALUES (?,?,?,?)');
 
 
-/* ═══════ 2.  Bot init ═══════ */
- const { Client, LocalAuth } = require('whatsapp-web.js');
- const puppeteer = require('puppeteer');
- const { Client, LocalAuth } = require('whatsapp-web.js');
- const puppeteer = require('puppeteer');
 
-  // …
 
- const client = new Client({
-   authStrategy: new LocalAuth({ dataPath: sessionDir }),
-   puppeteer: {
-     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-    headless: true,
-    args: [
-       '--no-sandbox',
-       '--disable-setuid-sandbox',
-       '--disable-dev-shm-usage'
-     ]
-   }
- });
  const client = new Client({
    authStrategy: new LocalAuth({ dataPath: sessionDir }),
  

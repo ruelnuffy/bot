@@ -7,11 +7,10 @@ const path = require('path');
 
 // where to store your WA session
 const sessionDir = path.join(__dirname, 'session');
+if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
-// ensure the folder exists
-if (!fs.existsSync(sessionDir)) {
-  fs.mkdirSync(sessionDir, { recursive: true });
-}
+
+
 const qrcode  = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Database = require('better-sqlite3');
@@ -545,3 +544,4 @@ cron.schedule('0 9 * * *', () => {
 
   console.log('[Reminder task] Daily check complete.');
 });
+ client.initialize();

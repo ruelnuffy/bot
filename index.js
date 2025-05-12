@@ -1,4 +1,4 @@
-require('dotenv').config();
+
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const SupaAuth = require('./supa-auth');

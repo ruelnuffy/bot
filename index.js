@@ -212,11 +212,6 @@ async function refreshLangCache(jid) {
   mem[jid] = mem[jid] || {}
   mem[jid].langCache = u?.language || 'English'
 }
-function str(jid, key, ...a) {
-  const lang = getUserLangCache(jid)
-  const bloc = STRINGS[lang] || STRINGS.English
-  return format(bloc[key] ?? STRINGS.English[key], ...a)
-}
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }))

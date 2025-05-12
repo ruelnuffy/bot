@@ -17,7 +17,8 @@ const client = new Client({
   authStrategy: new SupaAuth(),  // <-- only this handles load/save of session.json
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   }
 });
 

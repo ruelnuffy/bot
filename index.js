@@ -1,26 +1,25 @@
 require('dotenv').config();
 
-const { Client, LocalAuth }  = require('whatsapp-web.js');
-const SupaAuth               = require('./supa-auth');
-const qrcode                 = require('qrcode-terminal');
-const { createClient }       = require('@supabase/supabase-js');
-const cron                   = require('node-cron');   
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const SupaAuth = require('./supa-auth');
+const qrcode = require('qrcode-terminal');
+const { createClient } = require('@supabase/supabase-js');
+const cron = require('node-cron');   
+import { executablePath } from 'puppeteer';
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
-
+const client = new Client({ 
+  authStrategy: new SupaAuth(), 
+  puppeteer: { headless: true, 
+    args: ['--no-sandbox', '--disable-setuid-sandbox'], 
+    executablePath: executablePath() } 
+  });
 // ───────── WhatsApp client ─────────
-const client = new Client({
-  authStrategy: new SupaAuth(),  // <-- only this handles load/save of session.json
-  puppeteer: {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
-  }
-});
+
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));
 client.on('ready', () => console.log('✅ WhatsApp bot is ready'));
@@ -30,14 +29,14 @@ client.on('disconnected', () => console.log('⚠️ Disconnected, will re-authen
 client.initialize();
 
 // … the rest of your handlers …
- // last chance before exit
+// last chance before exit
 
 /* ---------- helpers (dates, strings, etc) ---------- */
 const CYCLE = 28
-const fmt   = d => d.toLocaleDateString('en-GB')
-const addD  = (d, n) => { const c = new Date(d); c.setDate(c.getDate() + n); return c }
-const norm  = s => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
-const mem   = {}   // chat‑state (id → { step, data })
+const fmt = d => d.toLocaleDateString('en-GB')
+const addD = (d, n) => { const c = new Date(d); c.setDate(c.getDate() + n); return c }
+const norm = s => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+const mem = {}   // chat‑state (id → { step, data })
 
 function st(id) { return (mem[id] ??= { step: null, data: {} }) }
 function format(str, ...a) { return str.replace(/{(\d+)}/g, (_, i) => a[i] ?? _) }
@@ -168,11 +167,11 @@ Adadi: {2} kwunan{3}
   // Add more languages here as needed
 };
 function str(jid, key, ...a) {
-  const lang  = getUserLangCache(jid);
-  const bloc  = STRINGS[lang] || STRINGS.English || {};
-  const tmpl  = bloc[key]   // try user’s language
-             || STRINGS.English?.[key]  // then English
-             || '';                     // finally empty string
+  const lang = getUserLangCache(jid);
+  const bloc = STRINGS[lang] || STRINGS.English || {};
+  const tmpl = bloc[key]   // try user’s language
+    || STRINGS.English?.[key]  // then English
+    || '';                     // finally empty string
   return format(tmpl, ...a);
 }
 
@@ -192,16 +191,16 @@ async function upsertUser(jid, wa_name) {
   }
 }
 const UserUpdate = {
-  lang      : (jid, language)        => supabase.from('users').update({ language        }).eq('jid', jid),
-  period    : (jid, last, next)      => supabase.from('users').update({ last_period: last, next_period: next }).eq('jid', jid),
-  reminder  : (jid, wants)           => supabase.from('users').update({ wants_reminder: wants }).eq('jid', jid)
+  lang: (jid, language) => supabase.from('users').update({ language }).eq('jid', jid),
+  period: (jid, last, next) => supabase.from('users').update({ last_period: last, next_period: next }).eq('jid', jid),
+  reminder: (jid, wants) => supabase.from('users').update({ wants_reminder: wants }).eq('jid', jid)
 }
-const Symptom   = {
-  add   : (jid, sym)      => supabase.from('symptoms').insert([{ jid, symptom: sym }]),
-  list  : jid             => supabase.from('symptoms').select('symptom,logged_at').eq('jid', jid).order('logged_at', { ascending: false })
+const Symptom = {
+  add: (jid, sym) => supabase.from('symptoms').insert([{ jid, symptom: sym }]),
+  list: jid => supabase.from('symptoms').select('symptom,logged_at').eq('jid', jid).order('logged_at', { ascending: false })
 }
-const Feedback  = {
-  add   : (jid, r1, r2)   => supabase.from('feedback').insert([{ jid, response1: r1, response2: r2 }])
+const Feedback = {
+  add: (jid, r1, r2) => supabase.from('feedback').insert([{ jid, response1: r1, response2: r2 }])
 }
 
 // ---------- language helpers ----------
@@ -231,11 +230,11 @@ async function safeSend(id, text) {
 
 // ---------- message handler ----------
 client.on('message', async m => {
-  const id   = m.from
+  const id = m.from
   const name = m._data?.notifyName || m._data?.pushName || ''
-  const raw  = (m.body || '').trim()
-  const txt  = norm(raw)
-  const s    = st(id)
+  const raw = (m.body || '').trim()
+  const txt = norm(raw)
+  const s = st(id)
 
   /* bookkeeping */
   await upsertUser(id, name)
@@ -357,7 +356,7 @@ cron.schedule('0 9 * * *', async () => {
     const diff = Math.floor((new Date(u.next_period) - today) / 86400000)
     if (diff === 3) {
       const lang = u.language || 'English'
-      const msg  = format((STRINGS[lang]?.reminderYes ?? STRINGS.English.reminderYes), fmt(new Date(u.next_period)))
+      const msg = format((STRINGS[lang]?.reminderYes ?? STRINGS.English.reminderYes), fmt(new Date(u.next_period)))
       await safeSend(u.jid, '🩸 ' + msg)
     }
   }

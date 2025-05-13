@@ -1,44 +1,44 @@
-# Use an Ubuntu base image for more flexibility with packages
-FROM ubuntu:20.04
+FROM node:18-slim
 
-# Set environment variables for Puppeteer (to avoid downloading Chromium automatically)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Install necessary dependencies (Chromium, fonts, and others needed by Puppeteer)
-RUN apt-get update && apt-get install -y \
-    chromium-browser \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libxss1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libasound2 \
-    fonts-liberation \
-    ttf-freefont \
-    nss \
-    freetype \
-    harfbuzz \
-    cairo \
-    pango \
+# Install required dependencies for Puppeteer
+RUN apt-get update \
+    && apt-get install -y wget gnupg \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+      --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory in the container
-WORKDIR /app
+# Create app directory
+WORKDIR /usr/src/app
 
-# Copy your application code into the container
-COPY . /app
-
-# Install all dependencies defined in package.json
+# Copy package files and install dependencies
+COPY package*.json ./
 RUN npm install
 
-# Expose the port the app will run on
-EXPOSE 3000
+# Copy all source files
+COPY . .
 
-# Set the default command to run the app
-CMD ["npm", "start"]
+# Create a non-root user and switch to it for security
+RUN groupadd -r whatsappbot && useradd -r -g whatsappbot -G audio,video whatsappbot \
+    && mkdir -p /home/whatsappbot/Downloads \
+    && chown -R whatsappbot:whatsappbot /home/whatsappbot \
+    && chown -R whatsappbot:whatsappbot /usr/src/app
+
+USER whatsappbot
+
+# Set environment variables for Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+
+# Set environment variables placeholder
+# These will be provided by Koyeb during deployment
+ENV SUPA_URL="https://ooycvetypklqvwtqubtn.supabase.co"
+ENV SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9veWN2ZXR5cGtscXZ3dHF1YnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY4OTg1NzksImV4cCI6MjA2MjQ3NDU3OX0.U6OzdJTS5U4p_zGP5R8sSScOqX4WZGMUi78dkl0_2zo"
+ENV SUPA_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9veWN2ZXR5cGtscXZ3dHF1YnRuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0Njg5ODU3OSwiZXhwIjoyMDYyNDc0NTc5fQ.Ea-WQ_O7nepg5pLh9acUZDSsdZp43M-LWkj9x2oekIo"
+# Expose any ports your app needs (if applicable)
+# EXPOSE 8080
+
+# Start the bot
+CMD ["node", "index.js"]

@@ -1,34 +1,36 @@
-# Use a non-Alpine version of Node.js to avoid missing dependencies
-FROM node:16
+# Use Alpine as base image
+FROM node:lts-alpine
 
-# Install Chromium and dependencies
-RUN apt-get update && apt-get install -y \
+# Add additional repositories to fetch missing dependencies
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
+    apk update && apk add --no-cache \
     chromium \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libxss1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libasound2 \
-    fonts-liberation \
+    nss \
+    freetype \
+    harfbuzz \
     ttf-freefont \
-    && rm -rf /var/lib/apt/lists/*
+    libxss \
+    libgdk-pixbuf \
+    cairo \
+    pango \
+    libgtk-3-0 \
+    libnss3 \
+    libcups2 \
+    libxss1 \
+    && rm -rf /var/cache/apk/*
 
-# Set environment variable to skip Chromium download
+# Puppeteer will use the default Chromium if no executablePath is set
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-# Set the working directory
+# Set working directory and copy application files
 WORKDIR /app
 COPY . /app
 
 # Install dependencies
 RUN npm install
 
+# Expose the app's port
 EXPOSE 3000
 
+# Start the app
 CMD ["npm", "start"]

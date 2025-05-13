@@ -24,7 +24,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/reposit
     && rm -rf /var/cache/apk/*
 
 # Set environment variable to skip Chromium download if it's not available
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true 
 
 # Set working directory
 WORKDIR /app

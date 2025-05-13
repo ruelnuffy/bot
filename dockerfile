@@ -1,5 +1,6 @@
 FROM node:16-slim
 
+# Install Chromium and dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -19,7 +20,12 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libxtst6 \
     xdg-utils \
+    chromium \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Puppeteer skip download and use local chromium
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
@@ -27,9 +33,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY . .
-
-ENV PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 EXPOSE 3000
 

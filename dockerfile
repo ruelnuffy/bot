@@ -1,42 +1,42 @@
+# Use an official Node.js runtime as a parent image
 FROM node:lts-alpine
 
-# Add edge/testing repository for additional dependencies
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-    apk update && apk add --no-cache \
+# Set the working directory inside the container
+WORKDIR /app
+
+# Install Chromium and dependencies
+RUN apk update && apk add --no-cache \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ttf-freefont \
     libxss \
+    libxcomposite \
+    libxdamage \
+    libxrandr \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
     cairo \
     pango \
-    libatk1.0-0 \
     libgtk-3-0 \
-    libgdk-pixbuf \
-    libnss3 \
-    libcups2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libasound2 \
     fonts-liberation \
     && rm -rf /var/cache/apk/*
 
-# Set environment variable to skip Chromium download if it's not available
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true 
-
-# Set working directory
-WORKDIR /app
-
-# Copy project files
-COPY . /app
+# Set environment variables to avoid Puppeteer downloading Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Install dependencies
+COPY package*.json ./
 RUN npm install
 
-# Expose the application port
+# Copy the rest of the application code to the container
+COPY . .
+
+# Expose the port the app will run on
 EXPOSE 3000
 
-# Start the application
+# Run the application
 CMD ["npm", "start"]

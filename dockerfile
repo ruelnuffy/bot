@@ -1,10 +1,10 @@
-# Use an official Node.js runtime as a parent image
+# Use Node.js LTS Alpine image as base
 FROM node:lts-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install Chromium and dependencies
+# Install Chromium and necessary dependencies
 RUN apk update && apk add --no-cache \
     chromium \
     nss \
@@ -25,17 +25,18 @@ RUN apk update && apk add --no-cache \
     fonts-liberation \
     && rm -rf /var/cache/apk/*
 
-# Set environment variables to avoid Puppeteer downloading Chromium
+# Set environment variables for Puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-# Install dependencies
+# Install app dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the application code to the container
+# Copy the app code to the container
 COPY . .
 
-# Expose the port the app will run on
+# Expose the port for the app
 EXPOSE 3000
 
 # Run the application

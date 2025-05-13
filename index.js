@@ -1,4 +1,3 @@
-require('dotenv').config();
 
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -23,6 +22,16 @@ const client = new Client({
   } 
 });
 // ───────── WhatsApp client ─────────
+const puppeteer = require('puppeteer-core');
+
+(async () => {
+  const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/chromium',
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+  // Your Puppeteer code here
+})();
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));

@@ -1,41 +1,45 @@
-# Use the official Node.js image with Debian as base (more complete base than Alpine)
-FROM node:lts-buster
+# Use Ubuntu base image instead of Alpine for more complete package support
+FROM ubuntu:20.04
 
-# Install Chromium and its dependencies
+# Set environment variables to skip Chromium download
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Update and install necessary dependencies
 RUN apt-get update && apt-get install -y \
     chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ttf-freefont \
-    libxss1 \
-    libgtk-3-0 \
-    libatk1.0-0 \
+    libnss3 \
     libatk-bridge2.0-0 \
+    libatk1.0-0 \
     libcups2 \
     libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libxss1 \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
     libasound2 \
     fonts-liberation \
+    ttf-freefont \
+    nss \
+    freetype \
+    harfbuzz \
+    cairo \
+    pango \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables for Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Set the working directory inside the container
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy all project files into the container
+# Copy the application code to the container
 COPY . /app
 
-# Install the app's dependencies
+# Install the app dependencies
 RUN npm install
 
-# Expose port 3000 (or the port your app uses)
+# Expose the port your application will use
 EXPOSE 3000
 
-# Run the app
+# Start the application
 CMD ["npm", "start"]

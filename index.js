@@ -5,7 +5,7 @@ const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const { executablePath } = require('puppeteer-core
+const { executablePath } = require('puppeteer-core');
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {

@@ -1,40 +1,20 @@
-# Use the official Node image as base
-FROM node:16-slim
+FROM node:lts-alpine
 
-# Install dependencies for Puppeteer (Chromium)
-RUN apt-get update && apt-get install -y \
-    wget \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
+# Install Chromium and dependencies
+RUN apk update && apk add --no-cache \
     chromium \
-    --no-install-recommends
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont
 
-# Set the working directory
+# Puppeteer will use the default Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 WORKDIR /app
-
-# Install npm dependencies
-COPY package*.json ./
+COPY . /app
 RUN npm install
 
-# Copy the rest of your app's source code
-COPY . .
+EXPOSE 3000
 
-# Set the executable path to Puppeteer's bundled Chromium
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Start your application
 CMD ["npm", "start"]

@@ -1,28 +1,28 @@
-# Use Alpine as base image
-FROM node:lts-alpine
+# Use a non-Alpine version of Node.js to avoid missing dependencies
+FROM node:16
 
-# Add additional repositories to fetch missing dependencies
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-    apk update && apk add --no-cache \
+# Install Chromium and dependencies
+RUN apt-get update && apt-get install -y \
     chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ttf-freefont \
-    libxss \
-    libgdk-pixbuf \
-    cairo \
-    pango \
-    libgtk-3-0 \
     libnss3 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
     libcups2 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
     libxss1 \
-    && rm -rf /var/cache/apk/*
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libasound2 \
+    fonts-liberation \
+    ttf-freefont \
+    && rm -rf /var/lib/apt/lists/*
 
-# Puppeteer will use the default Chromium if no executablePath is set
+# Set environment variable to skip Chromium download
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-# Set working directory and copy application files
+# Set the working directory
 WORKDIR /app
 COPY . /app
 

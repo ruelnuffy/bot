@@ -6,7 +6,6 @@ const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
 const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
-const executablePath = puppeteer.executablePath();
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -18,7 +17,6 @@ const client = new Client({
   puppeteer: { 
     headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-   
   } 
 });
 // ───────── WhatsApp client ─────────
@@ -26,7 +24,6 @@ const client = new Client({
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',  // Ensure the path is correct
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });

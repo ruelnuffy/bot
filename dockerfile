@@ -1,43 +1,41 @@
-# Use Node.js LTS Alpine image as base
-FROM node:lts-alpine
+# Use the official Node.js image with Debian as base (more complete base than Alpine)
+FROM node:lts-buster
 
-# Set the working directory inside the container
-WORKDIR /app
-
-# Install Chromium and necessary dependencies
-RUN apk update && apk add --no-cache \
+# Install Chromium and its dependencies
+RUN apt-get update && apt-get install -y \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ttf-freefont \
-    libxss \
-    libxcomposite \
-    libxdamage \
-    libxrandr \
-    libasound2 \
+    libxss1 \
+    libgtk-3-0 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
     libcups2 \
-    cairo \
-    pango \
-    libgtk-3-0 \
+    libgdk-pixbuf2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libasound2 \
     fonts-liberation \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for Puppeteer
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install app dependencies
-COPY package*.json ./
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy all project files into the container
+COPY . /app
+
+# Install the app's dependencies
 RUN npm install
 
-# Copy the app code to the container
-COPY . .
-
-# Expose the port for the app
+# Expose port 3000 (or the port your app uses)
 EXPOSE 3000
 
-# Run the application
+# Run the app
 CMD ["npm", "start"]

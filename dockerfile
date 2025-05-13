@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libasound2 \
     fonts-liberation \
-    ttf-freefont \
+    # Removed ttf-freefont to fix the issue
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variable to skip Chromium download

@@ -17,6 +17,8 @@ const client = new Client({
   puppeteer: { 
     headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
+    executablePath: '/usr/bin/chromium-browser',
+    
   } 
 });
 // ───────── WhatsApp client ─────────
@@ -24,6 +26,7 @@ const client = new Client({
 
 (async () => {
   const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/chromium-browser',
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });

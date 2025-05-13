@@ -1,36 +1,26 @@
-# Use a non-Alpine version of Node.js to avoid missing dependencies
-FROM node:16
+FROM node:lts-alpine
 
-# Install Chromium and dependencies
-RUN apt-get update && apt-get install -y \
-    chromium \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libgdk-pixbuf2.0-0 \
+# Install necessary dependencies
+RUN apk update && apk add --no-cache \
+    libxss \
+    libgdk-pixbuf \
+    cairo \
+    pango \
     libgtk-3-0 \
-    libxss1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libasound2 \
-    fonts-liberation \
-    # Removed ttf-freefont to fix the issue
-    && rm -rf /var/lib/apt/lists/*
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont \
+    && rm -rf /var/cache/apk/*
 
-# Set environment variable to skip Chromium download
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# Set environment variable to allow Puppeteer to download Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 
-# Set the working directory
 WORKDIR /app
 COPY . /app
 
-# Install dependencies
 RUN npm install
 
-# Expose the app's port
 EXPOSE 3000
 
-# Start the app
 CMD ["npm", "start"]

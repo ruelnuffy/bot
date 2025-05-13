@@ -1,14 +1,20 @@
 FROM node:lts-alpine
 
-# Install Chromium and dependencies
 RUN apk update && apk add --no-cache \
     chromium \
     nss \
     freetype \
     harfbuzz \
-    ttf-freefont
+    ttf-freefont \
+    libxss \
+    libgdk-pixbuf \
+    cairo \
+    pango \
+    libgtk-3-0 \
+    libnss3 \
+    libcups2 \
+    && rm -rf /var/cache/apk/*
 
-# Puppeteer will use the default Chromium if no executablePath is set
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app

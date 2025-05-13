@@ -8,7 +8,7 @@ RUN apk update && apk add --no-cache \
     harfbuzz \
     ttf-freefont
 
-# Puppeteer will use the default Chromium
+# Puppeteer will use the default Chromium if no executablePath is set
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app

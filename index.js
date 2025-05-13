@@ -1,3 +1,4 @@
+require('dotenv').config();
 
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -5,7 +6,8 @@ const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const { executablePath } = require('puppeteer-core');
+const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
+const executablePath = puppeteer.executablePath();  // Call executablePath function
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -14,15 +16,17 @@ if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 const client = new Client({ 
   authStrategy: new SupaAuth(), 
-  puppeteer: { headless: true, 
+  puppeteer: { 
+    headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-    executablePath: executablePath() } 
-  });
+    executablePath: executablePath  // Now correctly passing the executable path
+  } 
+});
 // ───────── WhatsApp client ─────────
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));
-client.on('ready', () => console.log('✅ WhatsApp bot is ready'));
+client.on('ready', () => console.log('✅ WhatsApp bot is readyß'));
 client.on('auth_failure', e => console.error('⚠️ Auth failure', e));
 client.on('disconnected', () => console.log('⚠️ Disconnected, will re-authenticate'));
 

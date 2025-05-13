@@ -17,7 +17,7 @@ const client = new Client({
   puppeteer: { 
     headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
     
   } 
 });
@@ -26,7 +26,7 @@ const client = new Client({
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });

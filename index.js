@@ -16,23 +16,19 @@ const client = new Client({
   authStrategy: new SupaAuth(), 
   puppeteer: { 
     headless: true, 
-    args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-    executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    
-  } 
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
 });
-// ───────── WhatsApp client ─────────
 
+// ───────── WhatsApp client ─────────
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
   console.log("Browser launched successfully");
 })();
-
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));

@@ -1,6 +1,7 @@
+# Start from the official node image
 FROM node:16-slim
 
-# Install Chromium and dependencies for Puppeteer
+# Install necessary dependencies for Chromium
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -23,19 +24,24 @@ RUN apt-get update && apt-get install -y \
     chromium \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Puppeteer skip download and use local chromium
+# Set Puppeteer to skip downloading Chromium and use the system one
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
+# Set the working directory inside the container
 WORKDIR /app
 
+# Copy package.json files to the container
 COPY package*.json ./
+
+# Install the production dependencies
 RUN npm ci --omit=dev
 
+# Copy the rest of the application code
 COPY . .
 
+# Expose the necessary port (adjust if needed)
 EXPOSE 3000
 
-USER node
-
+# Run the application
 CMD ["npm", "start"]

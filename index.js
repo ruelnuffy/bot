@@ -6,7 +6,7 @@ const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
 const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
-const executablePath = '/usr/bin/chromium-browser'; // Call executablePath function
+const executablePath = puppeteer.executablePath();
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -18,7 +18,7 @@ const client = new Client({
   puppeteer: { 
     headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-    executablePath: executablePath  // Now correctly passing the executable path
+    executablePath: executablePath  // Uses default Chromium bundled with Puppeteer
   } 
 });
 // ───────── WhatsApp client ─────────

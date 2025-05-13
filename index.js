@@ -18,7 +18,7 @@ const client = new Client({
   puppeteer: { 
     headless: true, 
     args: ['--no-sandbox', '--disable-setuid-sandbox'], 
-    executablePath: executablePath  // Uses default Chromium bundled with Puppeteer
+   
   } 
 });
 // ───────── WhatsApp client ─────────

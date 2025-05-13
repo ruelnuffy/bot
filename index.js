@@ -24,14 +24,16 @@ const client = new Client({
 // ───────── WhatsApp client ─────────
 
 
+const puppeteer = require('puppeteer-core');
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: '/usr/bin/chromium-browser',  // Ensure the path is correct
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
-  // Your Puppeteer code here
+  console.log("Browser launched successfully");
 })();
+
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));

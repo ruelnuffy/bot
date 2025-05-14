@@ -112,12 +112,16 @@ async function cleanupSession() {
          puppeteer: { 
            headless: true,
            executablePath: chromePath,
+           dumpio: true,       
            timeout: 300000,
         // More aggressive browser args for containerized environments
         args: [
-          '--no-sandbox', 
+          '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process',
+          '--no-zygote',
         ],
         // Prevent timeout issues
         ignoreHTTPSErrors: true,

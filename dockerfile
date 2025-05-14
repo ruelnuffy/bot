@@ -1,9 +1,9 @@
 # Use Node.js 18 as base
 FROM node:18-slim
 
-# Install required dependencies
+# Install Chromium and dependencies
 RUN apt-get update \
-    && apt-get install -y \
+  && apt-get install -y --no-install-recommends \
     chromium \
     fonts-ipafont-gothic \
     fonts-wqy-zenhei \
@@ -43,36 +43,27 @@ RUN apt-get update \
     libxss1 \
     libxtst6 \
     xdg-utils \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+  && rm -rf /var/lib/apt/lists/*
 
-# Create and set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install --production
-
-# Copy project files
-COPY . .
-
-# Set environment variables for Chrome
+# Skip Puppeteer’s own download, use system Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     NODE_ENV=production
 
-# Create directory for session data
-RUN mkdir -p /app/.wwebjs_auth/session \
-    && chown -R node:node /app/.wwebjs_auth
+COPY package*.json ./
+RUN npm install --production
 
-# Switch to non-root user
+# Copy the rest
+COPY . .
+
+# Make sure the auth folder exists
+RUN mkdir -p .wwebjs_auth/session
+
+# Switch to non-root
 USER node
 
-# Expose port for health check
 EXPOSE 8080
 
-# Start the bot
 CMD ["node", "index.js"]

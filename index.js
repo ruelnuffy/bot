@@ -4,7 +4,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const puppeteer = require('puppeteer');  // Ensure puppeteer-core is imported
+const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
 const path = require('path');
 const fs = require('fs').promises;
 

@@ -21,15 +21,19 @@ class SupaAuth extends LocalAuth {
 
   /** Ensure our sessions table exists via a Postgres RPC (or migrate yourself) */
   async beforeBrowserInitialized() {
-    const { error } = await this.supabase
-      .rpc('create_sessions_table_if_not_exists', { table_name: this.tableName });
-
-    if (error && !error.message.includes('already exists')) {
-      console.error('Error creating sessions table:', error);
+    try {
+      const { error } = await this.supabase
+        .rpc('create_sessions_table_if_not_exists', { table_name: this.tableName });
+      if (error && !error.message.includes('already exists')) {
+        console.error('Error creating sessions table:', error);
+      }
+    } catch (rpcErr) {
+      console.error('RPC call failed:', rpcErr);
     }
-
+  
     return super.beforeBrowserInitialized();
   }
+  
 
   /** Try local disk first; if no data, fall back to Supabase */
   async getAuthData() {

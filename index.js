@@ -1,10 +1,8 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-// Commented out SupaAuth as we're switching to LocalAuth for reliability
-// const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
+const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -97,18 +95,18 @@ async function cleanupSession() {
       chromePath = null; // Let puppeteer find Chrome on its own
     }
     
-    // Use a completely fresh userDataDir
-    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
-    console.log('Using fresh user data directory:', userDataDir);
-    
-    // Configure the WhatsApp client with the proper browser path
+    // IMPORTANT: Fix to remove the userDataDir when using LocalAuth
     const client = new Client({ 
-      authStrategy: new LocalAuth(), // Changed to LocalAuth instead of SupaAuth
+      authStrategy: new LocalAuth({
+        // The LocalAuth strategy will automatically handle its own storage
+        // You can customize the path where it stores data
+        dataPath: path.join(__dirname, '.wwebjs_auth')
+      }),
       puppeteer: { 
         headless: true,
         executablePath: chromePath,
-        // Set a unique user data directory to avoid conflicts
-        userDataDir: userDataDir,
+        // REMOVED userDataDir as it's incompatible with LocalAuth
+        // LocalAuth will manage its own session storage
         // Set a longer timeout for browser launch
         timeout: 120000,
         // More aggressive browser args for containerized environments

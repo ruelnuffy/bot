@@ -101,13 +101,7 @@ async function cleanupSession() {
     await cleanupSession();
     
     // Try to find Chrome path but don't fail if not found
-    let chromePath;
-    try {
-      chromePath = await findChromePath();
-    } catch (err) {
-      console.log('Warning: Could not find Chrome installation. Using default.');
-      chromePath = null; // Let puppeteer find Chrome on its own
-    }
+    let chromePath = '/usr/bin/chromium';
     
     // Use a completely fresh userDataDir
     const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());

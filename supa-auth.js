@@ -1,6 +1,6 @@
 // supa-auth.js
 require('dotenv').config();
-const { AuthStrategy } = require('whatsapp-web.js');
+const { Client } = require('whatsapp-web.js');
 const { createClient } = require('@supabase/supabase-js');
 
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -10,7 +10,18 @@ if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 
-class SupaAuth extends AuthStrategy {
+// Create a base auth strategy class
+class BaseAuthStrategy {
+  constructor() {}
+  async beforeBrowserInitialized() {}
+  async afterBrowserInitialized() {}
+  async destroy() {}
+  async logout() {}
+  async saveState() {}
+  async getState() {}
+}
+
+class SupaAuth extends BaseAuthStrategy {
   constructor() {
     super();
   }

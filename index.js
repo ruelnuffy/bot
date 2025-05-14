@@ -100,24 +100,13 @@ async function cleanupSession() {
     // Clean up any stale session files first
     await cleanupSession();
     
-    // Try to find Chrome path but don't fail if not found
-    let chromePath = '/usr/bin/chromium';
-    
-    // Use a completely fresh userDataDir
-    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
-    console.log('Using fresh user data directory:', userDataDir);
-    
     // Configure the WhatsApp client with the proper browser path
     const client = new Client({ 
       authStrategy: new SupaAuth(),
       puppeteer: { 
         headless: true,
-        executablePath: chromePath,
-        // Set a unique user data directory to avoid conflicts
-        userDataDir: userDataDir,
-        // Set a longer timeout for browser launch
+        executablePath: '/usr/bin/chromium',
         timeout: 300000,
-        // More aggressive browser args for containerized environments
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
@@ -140,7 +129,6 @@ async function cleanupSession() {
           '--disk-cache-size=0',
           '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ],
-        // Prevent timeout issues
         ignoreHTTPSErrors: true
       }
     });

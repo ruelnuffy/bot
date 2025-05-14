@@ -12,7 +12,14 @@ const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 
 // Create a base auth strategy class
 class BaseAuthStrategy {
-  constructor() {}
+  constructor() {
+    this.client = null;
+  }
+
+  setup(client) {
+    this.client = client;
+  }
+
   async beforeBrowserInitialized() {}
   async afterBrowserInitialized() {}
   async destroy() {}
@@ -26,8 +33,18 @@ class SupaAuth extends BaseAuthStrategy {
     super();
   }
 
+  setup(client) {
+    super.setup(client);
+  }
+
   async beforeBrowserInitialized() {
-    // No setup needed before browser initialization
+    // Try to restore session before browser starts
+    const state = await this.getState();
+    if (state) {
+      console.log('Found existing session');
+      return state;
+    }
+    return null;
   }
 
   async afterBrowserInitialized() {
@@ -35,7 +52,7 @@ class SupaAuth extends BaseAuthStrategy {
   }
 
   async destroy() {
-    // Clean up any resources if needed
+    await this.logout();
   }
 
   async logout() {

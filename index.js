@@ -35,7 +35,7 @@ function findChromePath() {
 (async function main() {
   try {
     // Create a session directory with proper permissions
-    // This is the key fix - we need to ensure the directory exists and has proper permissions
+    // Modified approach - don't try to chmod in containerized environments
     const sessionBasePath = path.join(__dirname, ".wwebjs_auth");
     const sessionDir = path.join(sessionBasePath, "session");
     
@@ -50,10 +50,16 @@ function findChromePath() {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // Ensure directory has proper permissions
-    console.log("Setting directory permissions");
-    fs.chmodSync(sessionBasePath, 0o755);
-    fs.chmodSync(sessionDir, 0o755);
+    // Safer permission handling - try/catch to avoid crashing
+    console.log("Setting directory permissions (if possible)");
+    try {
+      fs.chmodSync(sessionBasePath, 0o755);
+      fs.chmodSync(sessionDir, 0o755);
+      console.log("✅ Permissions set successfully");
+    } catch (error) {
+      console.log("⚠️ Could not set permissions, continuing anyway:", error.message);
+      // Continue execution even if chmod fails
+    }
 
     // Generate a unique session identifier for logging purposes
     const sessionId = `session-${Date.now()}`;

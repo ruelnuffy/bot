@@ -12,23 +12,56 @@ if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
-const client = new Client({ 
-  authStrategy: new SupaAuth(), 
-  puppeteer: { 
-    headless: true, 
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+
+// Define Chrome executable path based on common locations
+const CHROME_PATHS = [
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+  '/snap/bin/chromium',
+  // Add more potential paths if needed
+];
+
+// Function to check for Chrome/Chromium existence
+async function findChromePath() {
+  const fs = require('fs');
+  for (const path of CHROME_PATHS) {
+    try {
+      if (fs.existsSync(path)) {
+        console.log(`Found browser at: ${path}`);
+        return path;
+      }
+    } catch (e) {
+      // Continue checking other paths
+    }
   }
-});
+  throw new Error('No Chrome/Chromium installation found. Please install Chrome or specify executablePath.');
+}
 
 // ───────── WhatsApp client ─────────
-
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-  console.log("Browser launched successfully");
-})();
+  try {
+    const chromePath = await findChromePath();
+    
+    // Configure the WhatsApp client with the proper browser path
+    const client = new Client({ 
+      authStrategy: new SupaAuth(), 
+      puppeteer: { 
+        headless: true,
+        executablePath: chromePath,
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
+        ]
+      }
+    });
+
+
 
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));

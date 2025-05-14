@@ -1,12 +1,17 @@
+# Use Node.js 18 as base
 FROM node:18-slim
 
-# Install Chrome dependencies
+# Install Chromium and its dependencies
 RUN apt-get update \
-    && apt-get install -y wget gnupg \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y chromium \
+    && apt-get install -y \
+    chromium \
+    chromium-sandbox \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
+    --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

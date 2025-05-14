@@ -5,6 +5,7 @@ const { createClient }      = require('@supabase/supabase-js');
 const SupaAuth              = require('./supa-auth');
 const path                  = require('path');
 const fs                    = require('fs');
+const cron                  = require('node-cron'); // Add missing cron import
 
 // ───────── supabase client (for session storage) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -31,89 +32,90 @@ function findChromePath() {
 }
 
 // ───────── main ─────────
-(async () => {
-  // pick a brand-new profile each run so we never hit those
-  // “SingletonLock” permission issues
-  const userDataDir = path.join(
-    __dirname, 
-    '.wwebjs_auth', 
-    `session-${Date.now()}`
-  );
-  console.log('📂 userDataDir:', userDataDir);
+(async function main() {
+  try {
+    // pick a brand-new profile each run so we never hit those
+    // "SingletonLock" permission issues
+    const userDataDir = path.join(
+      __dirname, 
+      '.wwebjs_auth', 
+      `session-${Date.now()}`
+    );
+    console.log('📂 userDataDir:', userDataDir);
 
-  const chromePath = findChromePath();
+    const chromePath = findChromePath();
 
-  const client = new Client({
-    authStrategy: new SupaAuth({ tableName: 'whatsapp_sessions' }),
-    puppeteer: {
-      headless:             true,
-      executablePath:       chromePath,
-      userDataDir,               // ← key to avoid profile collisions
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote'
-      ],
-      ignoreHTTPSErrors:    true,
-      timeout:              300_000,
-      dumpio:               true
-    }
-  });
+    const client = new Client({
+      authStrategy: new SupaAuth({ tableName: 'whatsapp_sessions' }),
+      puppeteer: {
+        headless:             true,
+        executablePath:       chromePath,
+        userDataDir,               // ← key to avoid profile collisions
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process',
+          '--no-zygote'
+        ],
+        ignoreHTTPSErrors:    true,
+        timeout:              300_000,
+        dumpio:               true
+      }
+    });
 
-  client.on('qr', qr => {
-    console.log('🔍 QR Code — scan with your phone:');
-    qrcode.generate(qr, { small: true });
-    try {
-      fs.writeFileSync(path.resolve(__dirname,'last-qr.txt'), qr);
-      console.log('💾 QR saved to last-qr.txt');
-    } catch(e) {
-      console.warn('Could not save QR:', e.message);
-    }
-  });
+    client.on('qr', qr => {
+      console.log('🔍 QR Code — scan with your phone:');
+      qrcode.generate(qr, { small: true });
+      try {
+        fs.writeFileSync(path.resolve(__dirname,'last-qr.txt'), qr);
+        console.log('💾 QR saved to last-qr.txt');
+      } catch(e) {
+        console.warn('Could not save QR:', e.message);
+      }
+    });
 
-  client.on('authenticated', async session => {
-    console.log('✅ Authenticated! Session upserting to Supabase…');
-    try {
-      await supabase
-        .from('whatsapp_sessions')
-        .upsert({ id:'default', data: session });
-      console.log('💾 Session saved.');
-    } catch (e) {
-      console.error('❌ Error saving session:', e.message);
-    }
-  });
+    client.on('authenticated', async session => {
+      console.log('✅ Authenticated! Session upserting to Supabase…');
+      try {
+        await supabase
+          .from('whatsapp_sessions')
+          .upsert({ id:'default', data: session });
+        console.log('💾 Session saved.');
+      } catch (e) {
+        console.error('❌ Error saving session:', e.message);
+      }
+    });
 
-  client.on('ready', () => {
-    console.log('🎉 WhatsApp is ready!');
-    // remove any lingering QR file
-    try { fs.unlinkSync('last-qr.txt'); } catch {}
-  });
+    client.on('ready', () => {
+      console.log('🎉 WhatsApp is ready!');
+      // remove any lingering QR file
+      try { fs.unlinkSync('last-qr.txt'); } catch {}
+    });
 
-  client.on('auth_failure', e => {
-    console.error('⚠️ Auth failure:', e);
-  });
+    client.on('auth_failure', e => {
+      console.error('⚠️ Auth failure:', e);
+    });
 
-  client.on('disconnected', reason => {
-    console.warn('⚠️ Disconnected:', reason);
-    setTimeout(() => {
-      console.log('🔄 Reinitializing after disconnect…');
-      client.initialize();
-    }, 5_000);
-  });
+    client.on('disconnected', reason => {
+      console.warn('⚠️ Disconnected:', reason);
+      setTimeout(() => {
+        console.log('🔄 Reinitializing after disconnect…');
+        client.initialize();
+      }, 5_000);
+    });
 
-  client.on('error', err => {
-    console.error('🐞 Client error:', err);
-    setTimeout(() => {
-      console.log('🔄 Reinitializing after error…');
-      client.initialize();
-    }, 10_000);
-  });
+    client.on('error', err => {
+      console.error('🐞 Client error:', err);
+      setTimeout(() => {
+        console.log('🔄 Reinitializing after error…');
+        client.initialize();
+      }, 10_000);
+    });
 
-  console.log('🚀 Initializing client…');
-  client.initialize();
+    console.log('🚀 Initializing client…');
+    client.initialize();
 
 
     /* ---------- helpers (dates, strings, etc) ---------- */
@@ -393,6 +395,10 @@ Adadi: {2} kwunan{3}
       if (s.step === null && pick(txt, 'learnaboutsexualhealth', 3)) {
         s.step = 'edu'
         return safeSend(id, str(id, 'eduTopics'))
+      }
+      if (s.step === null && pick(txt, 'ordervenillepads', 4)) {
+        s.step = 'order'
+        return safeSend(id, str(id, 'orderQuantityPrompt'))
       }
       if (s.step === null && pick(txt, 'viewmycycle', 5)) {
         const u = await getUser(id)

@@ -47,7 +47,7 @@ async function findChromePath() {
     const client = new Client({ 
       authStrategy: new SupaAuth(), 
       puppeteer: { 
-        headless: true,
+        headless: false,
         executablePath: chromePath,
         args: [
           '--no-sandbox', 

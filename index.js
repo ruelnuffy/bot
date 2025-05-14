@@ -1,187 +1,120 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-// Commented out SupaAuth as we're switching to LocalAuth for reliability
-// const SupaAuth = require('./supa-auth');
-const qrcode = require('qrcode-terminal');
-const { createClient } = require('@supabase/supabase-js');
-const cron = require('node-cron');   
-const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
-const path = require('path');
-const fs = require('fs').promises;
-const SupaAuth    = require('./supa-auth');
+// index.js
+const { Client }            = require('whatsapp-web.js');
+const qrcode                = require('qrcode-terminal');
+const { createClient }      = require('@supabase/supabase-js');
+const SupaAuth              = require('./supa-auth');
+const path                  = require('path');
+const fs                    = require('fs');
 
-// ───────── Supabase (for your own tables, not auth) ─────────
+// ───────── supabase client (for session storage) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 
-// Define Chrome executable path based on common locations
+// ───────── helper to find Chrome/Chromium ─────────
 const CHROME_PATHS = [
   '/usr/bin/google-chrome',
   '/usr/bin/chromium-browser',
   '/usr/bin/chromium',
-  '/snap/bin/chromium',
-  // Add more potential paths if needed
+  '/snap/bin/chromium'
 ];
-
-// Function to find any installed browser
-async function findChromePath() {
-  const fs = require('fs');
-  for (const path of CHROME_PATHS) {
-    try {
-      if (fs.existsSync(path)) {
-        console.log(`Found browser at: ${path}`);
-        return path;
-      }
-    } catch (e) {
-      // Continue checking other paths
+function findChromePath() {
+  for (const p of CHROME_PATHS) {
+    if (fs.existsSync(p)) {
+      console.log(`✔️  Found browser at ${p}`);
+      return p;
     }
   }
-  
-  // Add fallback to /usr/bin/chromium-browser which is common in containerized environments
-  console.log('No standard Chrome installation found. Using fallback path.');
-  return '/usr/bin/chromium-browser';
+  console.warn('⚠️  No standard Chrome found; letting Puppeteer pick.');
+  return null;
 }
 
-// Function to clean up session files
-async function cleanupSession() {
-  try {
-    const sessionDir = path.join(__dirname, '.wwebjs_auth/session');
-    console.log('Cleaning up session directory:', sessionDir);
-    
-    // Check if directory exists
-    try {
-      await fs.access(sessionDir);
-    } catch (e) {
-      console.log('No session directory found, skipping cleanup');
-      return;
-    }
-    
-    // Remove SingletonLock file if it exists
-    try {
-      await fs.unlink(path.join(sessionDir, 'SingletonLock'));
-      console.log('Removed stale SingletonLock file');
-    } catch (e) {
-      // File might not exist, that's fine
-      console.log('No SingletonLock file found');
-    }
-    
-    // Optionally, delete other potentially problematic files
-    const knownProblemFiles = ['SingletonCookie', 'SingletonSocket'];
-    for (const file of knownProblemFiles) {
-      try {
-        await fs.unlink(path.join(sessionDir, file));
-        console.log(`Removed stale ${file} file`);
-      } catch (e) {
-        // Files might not exist, that's fine
-      }
-    }
-    
-  } catch (error) {
-    console.warn('Error during session cleanup:', error);
-    // Continue anyway, we'll just log the error
-  }
-}
-
-// ───────── WhatsApp client ─────────
+// ───────── main ─────────
 (async () => {
-  try {
-    // Clean up any stale session files first
-    await cleanupSession();
-    
-    // Try to find Chrome path but don't fail if not found
-    let chromePath;
-    try {
-      chromePath = await findChromePath();
-    } catch (err) {
-      console.log('Warning: Could not find Chrome installation. Using default.');
-      chromePath = null; // Let puppeteer find Chrome on its own
+  // pick a brand-new profile each run so we never hit those
+  // “SingletonLock” permission issues
+  const userDataDir = path.join(
+    __dirname, 
+    '.wwebjs_auth', 
+    `session-${Date.now()}`
+  );
+  console.log('📂 userDataDir:', userDataDir);
+
+  const chromePath = findChromePath();
+
+  const client = new Client({
+    authStrategy: new SupaAuth({ tableName: 'whatsapp_sessions' }),
+    puppeteer: {
+      headless:             true,
+      executablePath:       chromePath,
+      userDataDir,               // ← key to avoid profile collisions
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote'
+      ],
+      ignoreHTTPSErrors:    true,
+      timeout:              300_000,
+      dumpio:               true
     }
-    
-    // Use a completely fresh userDataDir
-    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
-    console.log('Using fresh user data directory:', userDataDir);
-    
-    // Configure the WhatsApp client with the proper browser path
-    const client = new Client({ 
-        authStrategy: new SupaAuth({
-           tableName: 'whatsapp_sessions', 
-           // optional override of where LocalAuth stores its files:
-          // dataPath: path.join(__dirname, '.wwebjs_auth')
-        }),
-         puppeteer: { 
-           headless: true,
-           executablePath: chromePath,
-           dumpio: true,       
-           timeout: 300000,
-        // More aggressive browser args for containerized environments
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--single-process',
-          '--no-zygote',
-        ],
-        // Prevent timeout issues
-        ignoreHTTPSErrors: true,
-        timeout: 300_000
-      }
-    });
+  });
 
-    client.on('qr', qr => {
-      console.log('QR Code received. Scan this QR code with your phone:');
-      qrcode.generate(qr, { small: true });
-      
-      // Save QR code to a file for remote access if needed
-      try {
-        require('fs').writeFileSync('./last-qr.txt', qr);
-        console.log('QR code saved to last-qr.txt');
-      } catch (err) {
-        console.error('Could not save QR code to file:', err);
-      }
-    });
-    
-    client.on('ready', () => {
-      console.log('✅ WhatsApp bot is ready!');
-      // Clear QR code file when authenticated
-      try {
-        require('fs').unlinkSync('./last-qr.txt');
-      } catch (err) {
-        // File might not exist, that's fine
-      }
-    });
-    
-    client.on('auth_failure', e => console.error('⚠️ Auth failure', e));
-    // Add error event listener to detect and handle browser crashes
-    client.on('error', error => {
-      console.error('Client error:', error);
-      // Try to gracefully handle errors and reconnect
-      setTimeout(() => {
-        console.log('Attempting to reinitialize after error...');
-        try {
-          client.initialize();
-        } catch (e) {
-          console.error('Reinitialization failed:', e);
-        }
-      }, 10000); // Wait 10 seconds before trying to reconnect
-    });
+  client.on('qr', qr => {
+    console.log('🔍 QR Code — scan with your phone:');
+    qrcode.generate(qr, { small: true });
+    try {
+      fs.writeFileSync(path.resolve(__dirname,'last-qr.txt'), qr);
+      console.log('💾 QR saved to last-qr.txt');
+    } catch(e) {
+      console.warn('Could not save QR:', e.message);
+    }
+  });
 
-    // Add more robust handling of disconnections
-    client.on('disconnected', reason => {
-      console.log('⚠️ Client disconnected:', reason);
-      // Try to reconnect after a short delay
-      setTimeout(() => {
-        console.log('Attempting to reconnect...');
-        try {
-          client.initialize();
-        } catch (e) {
-          console.error('Reconnection failed:', e);
-        }
-      }, 5000);
-    });
+  client.on('authenticated', async session => {
+    console.log('✅ Authenticated! Session upserting to Supabase…');
+    try {
+      await supabase
+        .from('whatsapp_sessions')
+        .upsert({ id:'default', data: session });
+      console.log('💾 Session saved.');
+    } catch (e) {
+      console.error('❌ Error saving session:', e.message);
+    }
+  });
 
-    client.initialize();
+  client.on('ready', () => {
+    console.log('🎉 WhatsApp is ready!');
+    // remove any lingering QR file
+    try { fs.unlinkSync('last-qr.txt'); } catch {}
+  });
+
+  client.on('auth_failure', e => {
+    console.error('⚠️ Auth failure:', e);
+  });
+
+  client.on('disconnected', reason => {
+    console.warn('⚠️ Disconnected:', reason);
+    setTimeout(() => {
+      console.log('🔄 Reinitializing after disconnect…');
+      client.initialize();
+    }, 5_000);
+  });
+
+  client.on('error', err => {
+    console.error('🐞 Client error:', err);
+    setTimeout(() => {
+      console.log('🔄 Reinitializing after error…');
+      client.initialize();
+    }, 10_000);
+  });
+
+  console.log('🚀 Initializing client…');
+  client.initialize();
+
 
     /* ---------- helpers (dates, strings, etc) ---------- */
     const CYCLE = 28

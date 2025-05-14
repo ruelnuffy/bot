@@ -115,10 +115,6 @@ function findChromePath() {
 
     console.log('🚀 Initializing client…');
     client.initialize();
-  } catch (error) {
-    console.error('❌ Error in main function:', error);
-  }
-})();
 
     /* ---------- helpers (dates, strings, etc) ---------- */
     const CYCLE = 28;
@@ -453,6 +449,34 @@ Adadi: {2} kwunan{3}
         await Feedback.add(id, s.data.response1, raw.trim());
         s.step = null;
         return safeSend(id, str(id, "feedbackThanks"));
+      }
+
+      /* ORDER HANDLING */
+      if (s.step === "order") {
+        const qty = parseInt(txt, 10);
+        if (isNaN(qty) || qty < 1 || qty > 99) {
+          return safeSend(id, str(id, "orderQuantityInvalid"));
+        }
+        // In production, replace this with your actual sales team or vendor number
+        const salesContact = "https://wa.me/1234567890";
+        await safeSend(
+          id,
+          str(id, "orderConfirmation", qty, qty > 1 ? "s" : "", salesContact)
+        );
+        // Notify a vendor group (if you have one set up)
+        try {
+          const vendorGroup = process.env.VENDOR_GROUP_ID;
+          if (vendorGroup) {
+            await safeSend(
+              vendorGroup,
+              str(id, "orderVendorMessage", name, id, qty, qty > 1 ? "s" : "")
+            );
+          }
+        } catch (e) {
+          console.warn("Failed to notify vendor:", e.message);
+        }
+        s.step = null;
+        return;
       }
 
       /* === Menu picks (idle) === */

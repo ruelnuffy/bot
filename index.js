@@ -118,7 +118,7 @@ function findChromePath() {
   } catch (error) {
     console.error('❌ Error in main function:', error);
   }
-})
+})();
 
     /* ---------- helpers (dates, strings, etc) ---------- */
     const CYCLE = 28;

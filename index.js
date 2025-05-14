@@ -5,7 +5,7 @@ const { createClient } = require("@supabase/supabase-js");
 const SupaAuth = require("./supa-auth");
 const path = require("path");
 const fs = require("fs");
-const cron = require("node-cron"); // Add missing cron import
+const cron = require("node-cron");
 
 // ───────── supabase client (for session storage) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -34,7 +34,26 @@ function findChromePath() {
 // ───────── main ─────────
 (async function main() {
   try {
+    // Create a session directory with proper permissions
+    // This is the key fix - we need to ensure the directory exists and has proper permissions
     const sessionBasePath = path.join(__dirname, ".wwebjs_auth");
+    const sessionDir = path.join(sessionBasePath, "session");
+    
+    // Create directories if they don't exist
+    if (!fs.existsSync(sessionBasePath)) {
+      console.log(`Creating directory: ${sessionBasePath}`);
+      fs.mkdirSync(sessionBasePath, { recursive: true });
+    }
+    
+    if (!fs.existsSync(sessionDir)) {
+      console.log(`Creating directory: ${sessionDir}`);
+      fs.mkdirSync(sessionDir, { recursive: true });
+    }
+
+    // Ensure directory has proper permissions
+    console.log("Setting directory permissions");
+    fs.chmodSync(sessionBasePath, 0o755);
+    fs.chmodSync(sessionDir, 0o755);
 
     // Generate a unique session identifier for logging purposes
     const sessionId = `session-${Date.now()}`;
@@ -57,6 +76,9 @@ function findChromePath() {
           "--disable-gpu",
           "--single-process",
           "--no-zygote",
+          
+          // Add these arguments to specify a user data directory with proper permissions
+          `--user-data-dir=${sessionDir}`,
         ],
         ignoreHTTPSErrors: true,
         timeout: 300_000,

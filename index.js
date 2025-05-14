@@ -111,32 +111,17 @@ async function cleanupSession() {
         }),
          puppeteer: { 
            headless: true,
+           executablePath: chromePath,
            timeout: 300000,
         // More aggressive browser args for containerized environments
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu',
-          '--disable-extensions',
-          '--disable-software-rasterizer',
-          '--disable-features=site-per-process',
-          '--headless=new',
-          '--disable-infobars',
-          '--disable-web-security',
-          '--aggressive-cache-discard',
-          '--disable-cache',
-          '--disable-application-cache',
-          '--disable-offline-load-stale-cache',
-          '--disk-cache-size=0',
-          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ],
         // Prevent timeout issues
-        ignoreHTTPSErrors: true
+        ignoreHTTPSErrors: true,
+        timeout: 300_000
       }
     });
 

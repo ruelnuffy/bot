@@ -14,6 +14,7 @@ const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 class BaseAuthStrategy {
   constructor() {
     this.client = null;
+    this.browser = null;
   }
 
   setup(client) {
@@ -21,7 +22,9 @@ class BaseAuthStrategy {
   }
 
   async beforeBrowserInitialized() {}
-  async afterBrowserInitialized() {}
+  async afterBrowserInitialized(browser, ...args) {
+    this.browser = browser;
+  }
   async destroy() {}
   async logout() {}
   async saveState() {}
@@ -38,25 +41,46 @@ class SupaAuth extends BaseAuthStrategy {
   }
 
   async beforeBrowserInitialized() {
-    // Try to restore session before browser starts
-    const state = await this.getState();
-    if (state) {
-      console.log('Found existing session');
-      return state;
+    try {
+      // Try to restore session before browser starts
+      const state = await this.getState();
+      if (state) {
+        console.log('Found existing session');
+        return state;
+      }
+    } catch (error) {
+      console.error('Error in beforeBrowserInitialized:', error);
     }
     return null;
   }
 
-  async afterBrowserInitialized() {
-    // No setup needed after browser initialization
+  async afterBrowserInitialized(browser, ...args) {
+    await super.afterBrowserInitialized(browser, ...args);
+    
+    // Handle browser events
+    browser.on('disconnected', () => {
+      console.log('Browser disconnected in auth strategy');
+    });
+
+    browser.on('targetdestroyed', () => {
+      console.log('Browser target destroyed in auth strategy');
+    });
   }
 
   async destroy() {
-    await this.logout();
+    try {
+      if (this.browser) {
+        const pages = await this.browser.pages();
+        await Promise.all(pages.map(page => page.close()));
+        await this.browser.close();
+      }
+      await this.logout();
+    } catch (error) {
+      console.error('Error in destroy:', error);
+    }
   }
 
   async logout() {
-    // Clean up session data on logout
     try {
       await supabase
         .from('wa_sessions')

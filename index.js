@@ -7,7 +7,7 @@ const cron = require('node-cron');
 const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
 const path = require('path');
 const fs = require('fs').promises;
-const SupaAuth    = require('./supaa-auth');
+const SupaAuth    = require('./supa-auth');
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {

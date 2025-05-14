@@ -1,47 +1,80 @@
 // supa-auth.js
 require('dotenv').config();
-const { LocalAuth } = require('whatsapp-web.js');
+const { AuthStrategy } = require('whatsapp-web.js');
 const { createClient } = require('@supabase/supabase-js');
 
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 
-// initialize Supabase client
+// Initialize Supabase client
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
 
-// your bucket + object names
-const BUCKET = 'whatsapp-sessions';
-const OBJ    = 'session.json';
-
-async function readSession() {
-  const { data, error } = await supabase
-    .storage
-    .from(BUCKET)
-    .download(OBJ);
-  if (error) {
-    // no session yet
-    return null;
+class SupaAuth extends AuthStrategy {
+  constructor() {
+    super();
   }
-  return JSON.parse(await data.text());
-}
 
-async function writeSession(session) {
-  await supabase
-    .storage
-    .from(BUCKET)
-    .upload(OBJ,
-      Buffer.from(JSON.stringify(session)),
-      { upsert: true, contentType: 'application/json' }
-    );
-}
-
-class SupaAuth extends LocalAuth {
-  async saveAuthInfo(data) {
-    await writeSession(data);
+  async beforeBrowserInitialized() {
+    // No setup needed before browser initialization
   }
-  async loadAuthInfo() {
-    return await readSession();
+
+  async afterBrowserInitialized() {
+    // No setup needed after browser initialization
+  }
+
+  async destroy() {
+    // Clean up any resources if needed
+  }
+
+  async logout() {
+    // Clean up session data on logout
+    try {
+      await supabase
+        .from('wa_sessions')
+        .delete()
+        .eq('id', 'current');
+      console.log('Session data cleared from Supabase');
+    } catch (error) {
+      console.error('Error clearing session data:', error);
+    }
+  }
+
+  async saveState(state) {
+    try {
+      await supabase
+        .from('wa_sessions')
+        .upsert([{
+          id: 'current',
+          state: state,
+          updated_at: new Date().toISOString()
+        }]);
+      console.log('Session state saved to Supabase');
+    } catch (error) {
+      console.error('Error saving session state:', error);
+      throw error;
+    }
+  }
+
+  async getState() {
+    try {
+      const { data, error } = await supabase
+        .from('wa_sessions')
+        .select('state')
+        .eq('id', 'current')
+        .single();
+
+      if (error) {
+        console.log('No existing session found');
+        return null;
+      }
+
+      console.log('Session state retrieved from Supabase');
+      return data.state;
+    } catch (error) {
+      console.error('Error retrieving session state:', error);
+      return null;
+    }
   }
 }
 

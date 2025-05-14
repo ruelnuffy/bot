@@ -1,12 +1,24 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-// Commented out SupaAuth as we're switching to LocalAuth for reliability
-// const SupaAuth = require('./supa-auth');
+const { Client } = require('whatsapp-web.js');
+const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
+const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs').promises;
+const express = require('express');
+const app = express();
+
+// ───────── Express server for health checks ─────────
+const PORT = process.env.PORT || 8080;
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+  console.log(`Health check server listening on port ${PORT}`);
+});
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
@@ -103,7 +115,7 @@ async function cleanupSession() {
     
     // Configure the WhatsApp client with the proper browser path
     const client = new Client({ 
-      authStrategy: new LocalAuth(), // Changed to LocalAuth instead of SupaAuth
+      authStrategy: new SupaAuth(),
       puppeteer: { 
         headless: true,
         executablePath: chromePath,
@@ -143,23 +155,34 @@ async function cleanupSession() {
       console.log('QR Code received. Scan this QR code with your phone:');
       qrcode.generate(qr, { small: true });
       
-      // Save QR code to a file for remote access if needed
-      try {
-        require('fs').writeFileSync('./last-qr.txt', qr);
-        console.log('QR code saved to last-qr.txt');
-      } catch (err) {
-        console.error('Could not save QR code to file:', err);
-      }
+      // Store QR code in Supabase
+      supabase
+        .from('qr_codes')
+        .upsert([{ id: 'latest', qr_code: qr, created_at: new Date().toISOString() }])
+        .then(() => console.log('QR code saved to Supabase'))
+        .catch(err => console.error('Could not save QR code to Supabase:', err));
     });
     
-    client.on('ready', () => {
+    client.on('ready', async () => {
       console.log('✅ WhatsApp bot is ready!');
-      // Clear QR code file when authenticated
       try {
-        require('fs').unlinkSync('./last-qr.txt');
-      } catch (err) {
-        // File might not exist, that's fine
+        await supabase
+          .from('bot_status')
+          .upsert([{
+            id: 'main',
+            status: 'connected',
+            last_connect: new Date().toISOString()
+          }]);
+      } catch (error) {
+        console.error('Failed to update connect status:', error);
       }
+      // Clear QR code from Supabase
+      supabase
+        .from('qr_codes')
+        .delete()
+        .eq('id', 'latest')
+        .then(() => console.log('QR code cleared from Supabase'))
+        .catch(err => console.error('Could not clear QR code from Supabase:', err));
     });
     
     client.on('auth_failure', e => console.error('⚠️ Auth failure', e));
@@ -178,8 +201,23 @@ async function cleanupSession() {
     });
 
     // Add more robust handling of disconnections
-    client.on('disconnected', reason => {
+    client.on('disconnected', async (reason) => {
       console.log('⚠️ Client disconnected:', reason);
+      
+      // Update status in Supabase
+      try {
+        await supabase
+          .from('bot_status')
+          .upsert([{
+            id: 'main',
+            status: 'disconnected',
+            last_disconnect: new Date().toISOString(),
+            reason: reason
+          }]);
+      } catch (error) {
+        console.error('Failed to update disconnect status:', error);
+      }
+
       // Try to reconnect after a short delay
       setTimeout(() => {
         console.log('Attempting to reconnect...');
@@ -187,6 +225,8 @@ async function cleanupSession() {
           client.initialize();
         } catch (e) {
           console.error('Reconnection failed:', e);
+          // If reconnection fails, exit the process so the container can restart
+          process.exit(1);
         }
       }, 5000);
     });
@@ -514,6 +554,28 @@ Adadi: {2} kwunan{3}
       }
       console.log('[Reminder task] done')
     });
+
+    // Handle process termination gracefully
+    const cleanup = async () => {
+      console.log('Cleaning up before exit...');
+      try {
+        await client.destroy();
+        await supabase
+          .from('bot_status')
+          .upsert([{
+            id: 'main',
+            status: 'shutdown',
+            last_disconnect: new Date().toISOString(),
+            reason: 'graceful_shutdown'
+          }]);
+      } catch (error) {
+        console.error('Cleanup error:', error);
+      }
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
   } catch (error) {
     console.error('❌ Fatal error:', error);
     process.exit(1); // Exit with error code to let the platform know there was an issue

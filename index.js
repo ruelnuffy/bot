@@ -43,6 +43,61 @@ async function findChromePath() {
   try {
     const chromePath = await findChromePath();
     
+    async function cleanupSession() {
+  const fs = require('fs').promises;
+  const path = require('path');
+  
+  try {
+    const sessionDir = path.join(__dirname, '.wwebjs_auth/session');
+    console.log('Cleaning up session directory:', sessionDir);
+    
+    // Check if directory exists
+    try {
+      await fs.access(sessionDir);
+    } catch (e) {
+      console.log('No session directory found, skipping cleanup');
+      return;
+    }
+    
+    // Remove SingletonLock file if it exists
+    try {
+      await fs.unlink(path.join(sessionDir, 'SingletonLock'));
+      console.log('Removed stale SingletonLock file');
+    } catch (e) {
+      // File might not exist, that's fine
+      console.log('No SingletonLock file found');
+    }
+    
+    // Optionally, delete other potentially problematic files
+    const knownProblemFiles = ['SingletonCookie', 'SingletonSocket'];
+    for (const file of knownProblemFiles) {
+      try {
+        await fs.unlink(path.join(sessionDir, file));
+        console.log(`Removed stale ${file} file`);
+      } catch (e) {
+        // Files might not exist, that's fine
+      }
+    }
+    
+  } catch (error) {
+    console.warn('Error during session cleanup:', error);
+    // Continue anyway, we'll just log the error
+  }
+}
+
+// Then in your async function where you initialize the client, add this before creating the client:
+
+// ───────── WhatsApp client ─────────
+(async () => {
+  try {
+    // Clean up any stale session files first
+    await cleanupSession();
+    
+    const chromePath = await findChromePath();
+    
+    // Use a completely fresh userDataDir
+    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
+    console.log('Using fresh user data directory:', userDataDir);
     // Configure the WhatsApp client with the proper browser path
 const client = new Client({ 
   authStrategy: new SupaAuth(), 

@@ -1,131 +1,96 @@
-// supa-auth.js
-require('dotenv').config();
-const { Client } = require('whatsapp-web.js');
+const { LocalAuth } = require('whatsapp-web.js');
 const { createClient } = require('@supabase/supabase-js');
 
-if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
-  throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
-}
-
-// Initialize Supabase client
-const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
-
-// Create a base auth strategy class
-class BaseAuthStrategy {
-  constructor() {
-    this.client = null;
-    this.browser = null;
-  }
-
-  setup(client) {
-    this.client = client;
-  }
-
-  async beforeBrowserInitialized() {}
-  async afterBrowserInitialized(browser, ...args) {
-    this.browser = browser;
-  }
-  async destroy() {}
-  async logout() {}
-  async saveState() {}
-  async getState() {}
-}
-
-class SupaAuth extends BaseAuthStrategy {
-  constructor() {
-    super();
-  }
-
-  setup(client) {
-    super.setup(client);
+/**
+ * Custom auth strategy that uses Supabase for storing session data
+ */
+class SupaAuth extends LocalAuth {
+  constructor(options = {}) {
+    super(options);
+    
+    if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
+      throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
+    }
+    
+    this.supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
+    this.tableName = options.tableName || 'whatsapp_sessions';
   }
 
   async beforeBrowserInitialized() {
-    try {
-      // Try to restore session before browser starts
-      const state = await this.getState();
-      if (state) {
-        console.log('Found existing session');
-        return state;
-      }
-    } catch (error) {
-      console.error('Error in beforeBrowserInitialized:', error);
-    }
-    return null;
-  }
-
-  async afterBrowserInitialized(browser, ...args) {
-    await super.afterBrowserInitialized(browser, ...args);
+    // Create the sessions table if it doesn't exist
+    const { error } = await this.supabase.rpc('create_sessions_table_if_not_exists', {
+      table_name: this.tableName
+    });
     
-    // Handle browser events
-    browser.on('disconnected', () => {
-      console.log('Browser disconnected in auth strategy');
-    });
-
-    browser.on('targetdestroyed', () => {
-      console.log('Browser target destroyed in auth strategy');
-    });
-  }
-
-  async destroy() {
-    try {
-      if (this.browser) {
-        const pages = await this.browser.pages();
-        await Promise.all(pages.map(page => page.close()));
-        await this.browser.close();
-      }
-      await this.logout();
-    } catch (error) {
-      console.error('Error in destroy:', error);
+    if (error && !error.message.includes('already exists')) {
+      console.error('Error creating sessions table:', error);
     }
+    
+    return await super.beforeBrowserInitialized();
   }
 
-  async logout() {
+  async getAuthData() {
     try {
-      await supabase
-        .from('wa_sessions')
-        .delete()
-        .eq('id', 'current');
-      console.log('Session data cleared from Supabase');
-    } catch (error) {
-      console.error('Error clearing session data:', error);
-    }
-  }
-
-  async saveState(state) {
-    try {
-      await supabase
-        .from('wa_sessions')
-        .upsert([{
-          id: 'current',
-          state: state,
-          updated_at: new Date().toISOString()
-        }]);
-      console.log('Session state saved to Supabase');
-    } catch (error) {
-      console.error('Error saving session state:', error);
-      throw error;
-    }
-  }
-
-  async getState() {
-    try {
-      const { data, error } = await supabase
-        .from('wa_sessions')
-        .select('state')
-        .eq('id', 'current')
+      // First try the local implementation (faster)
+      const localData = await super.getAuthData();
+      if (localData) return localData;
+      
+      // If not available locally, try from Supabase
+      const { data, error } = await this.supabase
+        .from(this.tableName)
+        .select('session_data')
+        .eq('id', 'default')
         .single();
-
+      
       if (error) {
-        console.log('No existing session found');
+        console.error('Error fetching auth data:', error);
         return null;
       }
-
-      console.log('Session state retrieved from Supabase');
-      return data.state;
+      
+      return data?.session_data || null;
     } catch (error) {
-      console.error('Error retrieving session state:', error);
       return null;
+    }
+  }
+
+  async saveAuthData(authData) {
+    try {
+      // Save locally first
+      await super.saveAuthData(authData);
+      
+      // Then save to Supabase
+      const { error } = await this.supabase
+        .from(this.tableName)
+        .upsert({ 
+          id: 'default', 
+          session_data: authData,
+          updated_at: new Date()
+        });
+      
+      if (error) {
+        console.error('Error saving auth data:', error);
+      }
+    } catch (error) {
+      console.error('Error in saveAuthData:', error);
+    }
+  }
+
+  async removeAuthData() {
+    try {
+      // Remove locally first
+      await super.removeAuthData();
+      
+      // Then remove from Supabase
+      const { error } = await this.supabase
+        .from(this.tableName)
+        .delete()
+        .eq('id', 'default');
+      
+      if (error) {
+        console.error('Error removing auth data:', error);
+      }
+    } catch (error) {
+      console.error('Error in removeAuthData:', error);
     }
   }
 }

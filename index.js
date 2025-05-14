@@ -111,7 +111,6 @@ async function cleanupSession() {
         }),
          puppeteer: { 
            headless: true,
-           executablePath: chromePath,
            timeout: 300000,
         // More aggressive browser args for containerized environments
         args: [

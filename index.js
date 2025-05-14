@@ -44,22 +44,28 @@ async function findChromePath() {
     const chromePath = await findChromePath();
     
     // Configure the WhatsApp client with the proper browser path
-    const client = new Client({ 
-      authStrategy: new SupaAuth(), 
-      puppeteer: { 
-        headless: false,
-        executablePath: chromePath,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu'
-        ]
-      }
-    });
+const client = new Client({ 
+  authStrategy: new SupaAuth(), 
+  puppeteer: { 
+    headless: true,
+    executablePath: chromePath,
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',  // Add this
+      '--disable-gpu',
+      '--disable-extensions',  // Add this
+      '--disable-software-rasterizer',  // Add this
+      '--disable-features=site-per-process',  // Add this for better compatibility
+      '--headless=new',  // Use new headless mode
+      '--disable-infobars'  // Add this
+    ]
+  }
+});
 
 
 

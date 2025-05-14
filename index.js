@@ -1,50 +1,46 @@
-const { Client } = require('whatsapp-web.js');
-const SupaAuth = require('./supa-auth');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+// Commented out SupaAuth as we're switching to LocalAuth for reliability
+// const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
 const path = require('path');
 const fs = require('fs').promises;
-const express = require('express');
-const app = express();
-
-// Global client instance
-let client = null;
-
-// Global error handler for unhandled rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit the process, just log it
-});
-
-// Global error handler for uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  // Don't exit the process, just log it
-});
-
-// ───────── Express server for health checks ─────────
-const PORT = process.env.PORT || 8080;
-
-app.get('/health', (req, res) => {
-  const status = client && client.pupBrowser ? 'ok' : 'initializing';
-  res.status(200).json({ 
-    status,
-    timestamp: new Date().toISOString(),
-    clientReady: client ? client.info !== undefined : false
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`Health check server listening on port ${PORT}`);
-});
 
 // ───────── Supabase (for your own tables, not auth) ─────────
 if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
+
+// Define Chrome executable path based on common locations
+const CHROME_PATHS = [
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+  '/snap/bin/chromium',
+  // Add more potential paths if needed
+];
+
+// Function to find any installed browser
+async function findChromePath() {
+  const fs = require('fs');
+  for (const path of CHROME_PATHS) {
+    try {
+      if (fs.existsSync(path)) {
+        console.log(`Found browser at: ${path}`);
+        return path;
+      }
+    } catch (e) {
+      // Continue checking other paths
+    }
+  }
+  
+  // Add fallback to /usr/bin/chromium-browser which is common in containerized environments
+  console.log('No standard Chrome installation found. Using fallback path.');
+  return '/usr/bin/chromium-browser';
+}
 
 // Function to clean up session files
 async function cleanupSession() {
@@ -86,28 +82,157 @@ async function cleanupSession() {
   }
 }
 
+// Add more robust error handling for browser crashes
+async function createNewBrowserInstance() {
+  console.log('Creating new browser instance...');
+  try {
+    const chromePath = await findChromePath();
+    return await puppeteer.launch({
+      headless: true,
+      executablePath: chromePath,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ]
+    });
+  } catch (err) {
+    console.error('Failed to create browser instance:', err);
+    throw err;
+  }
+}
+
+// ───────── Message handling functions ─────────
+async function handleIncomingMessage(message) {
+  try {
+    const sender = await message.getContact();
+    console.log(`New message from ${sender.pushname || sender.number}: ${message.body}`);
+    
+    // Store message in Supabase
+    await storeMessageInSupabase(message, sender);
+    
+    // Process commands
+    if (message.body.startsWith('!')) {
+      await handleCommand(message);
+    }
+  } catch (err) {
+    console.error('Error handling message:', err);
+  }
+}
+
+async function storeMessageInSupabase(message, sender) {
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert([
+        { 
+          message_id: message.id._serialized,
+          from_number: message.from,
+          sender_name: sender.pushname || '',
+          message_body: message.body,
+          timestamp: new Date(),
+          is_processed: false
+        }
+      ]);
+      
+    if (error) {
+      console.error('Error storing message in Supabase:', error);
+    } else {
+      console.log('Message stored in Supabase');
+    }
+  } catch (err) {
+    console.error('Exception storing message:', err);
+  }
+}
+
+async function handleCommand(message) {
+  const command = message.body.split(' ')[0].substring(1).toLowerCase();
+  const args = message.body.split(' ').slice(1);
+  
+  console.log(`Processing command: ${command}, args: ${args}`);
+  
+  switch (command) {
+    case 'help':
+      await message.reply('Available commands:\n!help - Show this message\n!ping - Check if bot is online\n!status - Get bot status');
+      break;
+    case 'ping':
+      await message.reply('Pong! Bot is online and working.');
+      break;
+    case 'status':
+      await sendBotStatus(message);
+      break;
+    default:
+      await message.reply(`Unknown command: ${command}. Type !help for available commands.`);
+  }
+}
+
+async function sendBotStatus(message) {
+  try {
+    const uptime = process.uptime();
+    const uptimeStr = formatUptime(uptime);
+    
+    // Get memory usage
+    const memoryUsage = process.memoryUsage();
+    const memoryUsageStr = `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`;
+    
+    // Count messages in Supabase
+    const { count, error } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true });
+      
+    const messageCount = error ? 'Error getting count' : count;
+    
+    await message.reply(`*Bot Status*\n\nUptime: ${uptimeStr}\nMemory usage: ${memoryUsageStr}\nMessages processed: ${messageCount}`);
+  } catch (err) {
+    console.error('Error sending status:', err);
+    await message.reply('Error getting bot status');
+  }
+}
+
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / (3600 * 24));
+  seconds %= 3600 * 24;
+  const hours = Math.floor(seconds / 3600);
+  seconds %= 3600;
+  const minutes = Math.floor(seconds / 60);
+  seconds = Math.floor(seconds % 60);
+  
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+}
+
 // ───────── WhatsApp client ─────────
-async function initializeWhatsApp() {
+(async () => {
   try {
     // Clean up any stale session files first
     await cleanupSession();
     
-    // If there's an existing client, destroy it first
-    if (client) {
-      try {
-        await client.destroy();
-      } catch (e) {
-        console.warn('Error destroying existing client:', e);
-      }
+    // Try to find Chrome path but don't fail if not found
+    let chromePath;
+    try {
+      chromePath = await findChromePath();
+    } catch (err) {
+      console.log('Warning: Could not find Chrome installation. Using default.');
+      chromePath = null; // Let puppeteer find Chrome on its own
     }
     
+    // Use a completely fresh userDataDir
+    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
+    console.log('Using fresh user data directory:', userDataDir);
+    
     // Configure the WhatsApp client with the proper browser path
-    client = new Client({ 
-      authStrategy: new SupaAuth(),
+    const client = new Client({ 
+      authStrategy: new LocalAuth({
+        clientId: 'whatsapp-bot',
+        dataPath: userDataDir
+      }),
       puppeteer: { 
         headless: true,
-        executablePath: '/usr/bin/chromium',
-        timeout: 300000,
+        executablePath: chromePath,
+        // Set a unique user data directory to avoid conflicts
+        userDataDir: userDataDir,
+        // Set a longer timeout for browser launch
+        timeout: 120000,
+        // More aggressive browser args for containerized environments
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
@@ -130,425 +255,280 @@ async function initializeWhatsApp() {
           '--disk-cache-size=0',
           '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ],
-        ignoreHTTPSErrors: true,
-        handleSIGINT: false, // Let us handle process signals
-        handleSIGTERM: false,
-        handleSIGHUP: false
+        // Prevent timeout issues
+        ignoreHTTPSErrors: true
       }
-    });
-
-    // Handle browser-specific errors
-    client.pupBrowser?.on?.('disconnected', () => {
-      console.log('Browser disconnected, attempting to reconnect...');
-      setTimeout(() => {
-        initializeWhatsApp().catch(console.error);
-      }, 5000);
     });
 
     client.on('qr', qr => {
       console.log('QR Code received. Scan this QR code with your phone:');
       qrcode.generate(qr, { small: true });
       
-      // Store QR code in Supabase
-      supabase
-        .from('qr_codes')
-        .upsert([{ id: 'latest', qr_code: qr, created_at: new Date().toISOString() }])
-        .then(() => console.log('QR code saved to Supabase'))
-        .catch(err => console.error('Could not save QR code to Supabase:', err));
+      // Save QR code to a file for remote access if needed
+      try {
+        require('fs').writeFileSync('./last-qr.txt', qr);
+        console.log('QR code saved to last-qr.txt');
+      } catch (err) {
+        console.error('Could not save QR code to file:', err);
+      }
     });
     
-    client.on('ready', async () => {
+    client.on('ready', () => {
       console.log('✅ WhatsApp bot is ready!');
+      // Clear QR code file when authenticated
       try {
-        await supabase
-          .from('bot_status')
-          .upsert([{
-            id: 'main',
-            status: 'connected',
-            last_connect: new Date().toISOString()
-          }]);
-      } catch (error) {
-        console.error('Failed to update connect status:', error);
+        require('fs').unlinkSync('./last-qr.txt');
+      } catch (err) {
+        // File might not exist, that's fine
       }
-      // Clear QR code from Supabase
-      supabase
-        .from('qr_codes')
-        .delete()
-        .eq('id', 'latest')
-        .then(() => console.log('QR code cleared from Supabase'))
-        .catch(err => console.error('Could not clear QR code from Supabase:', err));
+      
+      // Set up message handling after client is ready
+      setupMessageHandlers(client);
+      
+      // Set up cron jobs
+      setupCronJobs(client);
     });
     
-    client.on('auth_failure', async (err) => {
-      console.error('⚠️ Auth failure:', err);
+    client.on('auth_failure', e => {
+      console.error('⚠️ Auth failure', e);
+      // Delete the session directory and try again
+      const fs = require('fs');
       try {
-        await client.destroy();
-        setTimeout(() => {
-          initializeWhatsApp().catch(console.error);
-        }, 5000);
-      } catch (error) {
-        console.error('Error during auth failure cleanup:', error);
+        if (fs.existsSync(userDataDir)) {
+          console.log('Removing failed auth session directory');
+          fs.rmSync(userDataDir, { recursive: true, force: true });
+        }
+      } catch (err) {
+        console.error('Failed to remove auth directory:', err);
       }
+      
+      // Wait a bit and try again
+      setTimeout(() => {
+        console.log('Retrying after auth failure...');
+        client.initialize();
+      }, 5000);
+    });
+    
+    // Add error event listener to detect and handle browser crashes
+    client.on('error', error => {
+      console.error('Client error:', error);
+      // Try to gracefully handle errors and reconnect
+      setTimeout(() => {
+        console.log('Attempting to reinitialize after error...');
+        try {
+          client.initialize();
+        } catch (e) {
+          console.error('Reinitialization failed:', e);
+        }
+      }, 10000); // Wait 10 seconds before trying to reconnect
     });
 
-    client.on('disconnected', async (reason) => {
+    // Add more robust handling of disconnections
+    client.on('disconnected', reason => {
       console.log('⚠️ Client disconnected:', reason);
+      // Try to reconnect after a short delay
+      setTimeout(() => {
+        console.log('Attempting to reconnect...');
+        try {
+          client.initialize();
+        } catch (e) {
+          console.error('Reconnection failed:', e);
+        }
+      }, 5000);
+    });
+    
+    // Setup message handlers
+    function setupMessageHandlers(client) {
+      client.on('message', async msg => {
+        await handleIncomingMessage(msg);
+      });
+      
+      client.on('message_ack', (msg, ack) => {
+        // Update message status in database
+        updateMessageStatus(msg.id._serialized, ack);
+      });
+    }
+    
+    // Setup cron jobs
+    function setupCronJobs(client) {
+      // Run health check every 30 minutes
+      cron.schedule('*/30 * * * *', async () => {
+        console.log('Running health check...');
+        await healthCheck(client);
+      });
+      
+      // Process queued messages every 5 minutes
+      cron.schedule('*/5 * * * *', async () => {
+        console.log('Processing queued messages...');
+        await processQueuedMessages(client);
+      });
+    }
+    
+    // Update message status in Supabase
+    async function updateMessageStatus(messageId, ackStatus) {
       try {
-        await supabase
-          .from('bot_status')
-          .upsert([{
-            id: 'main',
-            status: 'disconnected',
-            last_disconnect: new Date().toISOString(),
-            reason: reason
-          }]);
-
-        await client.destroy();
-        setTimeout(() => {
-          initializeWhatsApp().catch(console.error);
-        }, 5000);
-      } catch (error) {
-        console.error('Error during disconnect cleanup:', error);
+        const { error } = await supabase
+          .from('messages')
+          .update({ 
+            status: ackStatus,
+            updated_at: new Date()
+          })
+          .eq('message_id', messageId);
+          
+        if (error) {
+          console.error('Error updating message status:', error);
+        }
+      } catch (err) {
+        console.error('Exception updating message status:', err);
       }
-    });
+    }
+    
+    // Health check function
+    async function healthCheck(client) {
+      try {
+        const state = client.getState();
+        console.log('Client state:', state);
+        
+        // Log memory usage
+        const memoryUsage = process.memoryUsage();
+        console.log('Memory usage:', {
+          rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
+          heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
+          heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`
+        });
+        
+        // Log in Supabase
+        await supabase.from('bot_logs').insert([{
+          log_type: 'health_check',
+          client_state: state,
+          memory_usage: memoryUsage,
+          timestamp: new Date()
+        }]);
+        
+        // Reconnect if not connected
+        if (state !== 'CONNECTED') {
+          console.log('Client not connected. Attempting reconnection...');
+          client.initialize();
+        }
+      } catch (err) {
+        console.error('Health check failed:', err);
+      }
+    }
+    
+    // Process queued messages
+    async function processQueuedMessages(client) {
+      try {
+        // Get queued messages from Supabase
+        const { data, error } = await supabase
+          .from('outgoing_messages')
+          .select('*')
+          .eq('is_sent', false)
+          .limit(10);
+          
+        if (error) {
+          console.error('Error fetching queued messages:', error);
+          return;
+        }
+        
+        console.log(`Found ${data.length} messages to send`);
+        
+        // Process each message
+        for (const msg of data) {
+          try {
+            console.log(`Sending message to ${msg.to_number}: ${msg.message_body.substring(0, 20)}...`);
+            
+            // Send the message
+            const chatId = msg.to_number.includes('@c.us') ? msg.to_number : `${msg.to_number}@c.us`;
+            await client.sendMessage(chatId, msg.message_body);
+            
+            // Update the message as sent
+            await supabase
+              .from('outgoing_messages')
+              .update({ 
+                is_sent: true,
+                sent_at: new Date()
+              })
+              .eq('id', msg.id);
+              
+            console.log(`Message ${msg.id} sent successfully`);
+            
+            // Don't flood WhatsApp API
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (err) {
+            console.error(`Error sending message ${msg.id}:`, err);
+            
+            // Mark as failed
+            await supabase
+              .from('outgoing_messages')
+              .update({ 
+                error_message: err.message,
+                attempts: msg.attempts + 1
+              })
+              .eq('id', msg.id);
+          }
+        }
+      } catch (err) {
+        console.error('Error processing queued messages:', err);
+      }
+    }
 
-    // Initialize the client
-    await client.initialize().catch(err => {
-      console.error('Failed to initialize client:', err);
-      throw err;
+    console.log('Starting WhatsApp client initialization...');
+    client.initialize();
+    
+    // Handle graceful shutdown
+    process.on('SIGINT', async () => {
+      console.log('Received SIGINT, shutting down gracefully...');
+      try {
+        // Log shutdown
+        await supabase.from('bot_logs').insert([{
+          log_type: 'shutdown',
+          timestamp: new Date(),
+          details: 'Graceful shutdown initiated by SIGINT'
+        }]);
+        
+        // Give time for the log to be written
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Destroy the client
+        await client.destroy();
+        console.log('Client destroyed successfully');
+      } catch (err) {
+        console.error('Error during shutdown:', err);
+      }
+      process.exit(0);
     });
-
-    return client;
+    
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      // Log to Supabase
+      supabase.from('bot_logs').insert([{
+        log_type: 'error',
+        timestamp: new Date(),
+        details: `Unhandled Rejection: ${reason}`
+      }]).then(() => {
+        console.log('Error logged to Supabase');
+      }).catch(err => {
+        console.error('Failed to log error to Supabase:', err);
+      });
+    });
+    
   } catch (error) {
-    console.error('❌ Fatal error during initialization:', error);
-    // Wait before retrying
-    setTimeout(() => {
-      initializeWhatsApp().catch(console.error);
-    }, 10000);
-  }
-}
-
-// Start the WhatsApp client
-initializeWhatsApp().catch(console.error);
-
-/* ---------- helpers (dates, strings, etc) ---------- */
-const CYCLE = 28
-const fmt = d => d.toLocaleDateString('en-GB')
-const addD = (d, n) => { const c = new Date(d); c.setDate(c.getDate() + n); return c }
-const norm = s => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
-const mem = {}   // chat‑state (id → { step, data })
-
-function st(id) { return (mem[id] ??= { step: null, data: {} }) }
-function format(str, ...a) { return str.replace(/{(\d+)}/g, (_, i) => a[i] ?? _) }
-
-// ---------- i18n strings (unchanged, shortened for brevity) ----------
-const STRINGS = {
-  English: {
-    menu: `Hi, I'm *Venille AI*, your private menstrual & sexual-health companion.
-
-Reply with the *number* **or** the *words*:
-
-1️⃣  Track my period
-2️⃣  Log symptoms
-3️⃣  Learn about sexual health
-4️⃣  Order Venille Pads
-5️⃣  View my cycle
-6️⃣  View my symptoms
-7️⃣  Change language
-8️⃣  Give feedback / report a problem`,
-
-    fallback: 'Sorry, I didn\'t get that.\nType *menu* to see what I can do.',
-    trackPrompt: '🩸 When did your last period start? (e.g. 12/05/2025)',
-    langPrompt: 'Type your preferred language (e.g. English, Hausa…)',
-    savedSymptom: 'Saved ✔︎ — send another, or type *done*.',
-    askReminder: '✅ Saved! Your next period is likely around *{0}*.\nWould you like a reminder? (yes / no)',
-    reminderYes: '🔔 Reminder noted! I\'ll message you a few days before.',
-    reminderNo: '👍 No problem – ask me any time.',
-    invalidDate: '🙈 Please type the date like *12/05/2025*',
-    notValidDate: '🤔 That doesn\'t look like a valid date.',
-    symptomsDone: '✅ {0} symptom{1} saved. Feel better soon ❤️',
-    symptomsCancel: '🚫 Cancelled.',
-    symptomsNothingSaved: 'Okay, nothing saved.',
-    symptomPrompt: 'How are you feeling? Send one symptom at a time.\nWhen done, type *done* (or *cancel*).',
-    eduTopics: `What topic?
-
-1️⃣  STIs  
-2️⃣  Contraceptives  
-3️⃣  Consent  
-4️⃣  Hygiene during menstruation  
-5️⃣  Myths and Facts`,
-    languageSet: '🔤 Language set to *{0}*.',
-    noPeriod: 'No period date recorded yet.',
-    cycleInfo: `📅 *Your cycle info:*  
-• Last period: *{0}*  
-• Predicted next: *{1}*`,
-    noSymptoms: 'No symptoms logged yet.',
-    symptomsHistory: '*Your symptom history (last 5):*\n{0}',
-    feedbackQ1: 'Did you have access to sanitary pads this month?\n1. Yes   2. No',
-    feedbackQ2: 'Thanks. What challenges did you face? (or type "skip")',
-    feedbackThanks: '❤️  Feedback noted — thank you!',
-    orderQuantityPrompt: 'How many packs of *Venille Pads* would you like to order?',
-    orderQuantityInvalid: 'Please enter a *number* between 1 and 99, e.g. 3',
-    orderConfirmation: `✅ Your order for *{0} pack{1}* has been forwarded.
-
-Tap the link below to chat directly with our sales team and confirm delivery:
-{2}
-
-Thank you for choosing Venille!`,
-    orderVendorMessage: `🆕 *Venille Pads order*
-
-From : {0}
-JID  : {1}
-Qty  : {2} pack{3}
-
-(Please contact the customer to arrange delivery.)`
-  },
-
-  Hausa: {
-    menu: `Sannu, ni ce *Venille AI*, abokiyar lafiyar jinin haila da dangantakar jima'i.
-
-Zaɓi daga cikin waɗannan:
-
-1️⃣  Bi jinin haila
-2️⃣  Rubuta alamomin rashin lafiya
-3️⃣  Koyi game da lafiyar jima'i
-4️⃣  Yi odar Venille Pads
-5️⃣  Duba zagayen haila
-6️⃣  Duba alamun rashin lafiya
-7️⃣  Sauya harshe
-8️⃣  Bayar da ra'ayi / rahoto matsala`,
-
-    fallback: 'Yi hakuri, ban gane ba.\nRubuta *menu* don ganin abin da zan iya yi.',
-    trackPrompt: '🩸 Yaushe ne lokacin farkon jinin haila na ƙarshe? (e.g. 12/05/2025)',
-    langPrompt: 'Rubuta harshen da kake so (misali: English, Hausa…)',
-    savedSymptom: 'An ajiye ✔︎ — aika wani ko rubuta *done*.',
-    askReminder: '✅ An ajiye! Ana sa ran haila na gaba ne kusa da *{0}*.\nKana son aiko maka da tunatarwa? (ee / a\'a)',
-    reminderYes: '🔔 Tunatarwa ta samu! Zan aiko maka saƙo \'yan kwanakin kafin.',
-    reminderNo: '👍 Babu damuwa - tambayi ni a kowane lokaci.',
-    invalidDate: '🙈 Da fatan za a rubuta kwanan wata kamar *12/05/2025*',
-    notValidDate: '🤔 Wannan bai yi kama da kwanan wata mai kyau ba.',
-    symptomsDone: '✅ An ajiye alama {0}{1}. Da fatan kawo maki sauki ❤️',
-    symptomsCancel: '🚫 An soke.',
-    symptomsNothingSaved: 'To, ba a adana komai ba.',
-    symptomPrompt: 'Yaya jikin ki? Aika alama guda ɗaya a kowane lokaci.\nIn an gama, rubuta *done* (ko *cancel*).',
-    eduTopics: `Wane batun?
-
-1️⃣  Cutar STIs  
-2️⃣  Hanyoyin Dakile Haihuwa  
-3️⃣  Yarda  
-4️⃣  Tsabta yayin jinin haila  
-5️⃣  Karin Magana da Gaskiya`,
-    languageSet: '🔤 An saita harshe zuwa *{0}*.',
-    noPeriod: 'Ba a yi rijistar kwanan haila ba har yanzu.',
-    cycleInfo: `📅 *Bayanin zagayen haila:*  
-• Haila na ƙarshe: *{0}*  
-• Ana hasashen na gaba: *{1}*`,
-    noSymptoms: 'Ba a rubuta alamun rashin lafiya ba har yanzu.',
-    symptomsHistory: '*Tarihin alamun rashin lafiyarki (na ƙarshe 5):*\n{0}',
-    feedbackQ1: 'Shin kun samu damar samun sanitary pads a wannan watan?\n1. Ee   2. A\'a',
-    feedbackQ2: 'Na gode. Wane irin kalubale kuka fuskanta? (ko rubuta "skip")',
-    feedbackThanks: '❤️  An lura da ra\'ayin ku - na gode!',
-    orderQuantityPrompt: 'Kwunnan *Venille Pads* nawa kuke son siyan?',
-    orderQuantityInvalid: 'Da fatan a shigar da *lambar* tsakanin 1 da 99, misali 3',
-    orderConfirmation: `✅ An aika odar ku ta *kwunan {0}{1}*.
-
-Danna wannan hanyar don tattaunawa kai tsaye da ma\'aikatan sayarwarmu don tabbatar da isar:
-{2}
-
-Mun gode da zaɓen Venille!`,
-    orderVendorMessage: `🆕 *Odar Venille Pads*
-
-Daga : {0}
-JID  : {1}
-Adadi: {2} kwunan{3}
-
-(Da fatan a tuntuɓi masoyi don shirya isar da shi.)`
-  }
-  // Add more languages here as needed
-};
-
-function str(jid, key, ...a) {
-  const lang = getUserLangCache(jid);
-  const bloc = STRINGS[lang] || STRINGS.English || {};
-  const tmpl = bloc[key]   // try user's language
-    || STRINGS.English?.[key]  // then English
-    || '';                     // finally empty string
-  return format(tmpl, ...a);
-}
-
-// ---------- Supabase data helpers (all async) ----------
-async function getUser(jid) {
-  const { data } = await supabase.from('users').select('*').eq('jid', jid).single()
-  return data
-}
-async function upsertUser(jid, wa_name) {
-  const now = new Date().toISOString()
-  const row = await getUser(jid)
-  if (row) {
-    await supabase.from('users').update({ wa_name, last_seen: now }).eq('jid', jid)
-  } else {
-    await supabase.from('users').insert([{ jid, wa_name, first_seen: now, last_seen: now }])
-  }
-}
-const UserUpdate = {
-  lang: (jid, language) => supabase.from('users').update({ language }).eq('jid', jid),
-  period: (jid, last, next) => supabase.from('users').update({ last_period: last, next_period: next }).eq('jid', jid),
-  reminder: (jid, wants) => supabase.from('users').update({ wants_reminder: wants }).eq('jid', jid)
-}
-const Symptom = {
-  add: (jid, sym) => supabase.from('symptoms').insert([{ jid, symptom: sym }]),
-  list: jid => supabase.from('symptoms').select('symptom,logged_at').eq('jid', jid).order('logged_at', { ascending: false })
-}
-const Feedback = {
-  add: (jid, r1, r2) => supabase.from('feedback').insert([{ jid, response1: r1, response2: r2 }])
-}
-
-// ---------- language helpers ----------
-function getUserLangCache(jid) {
-  return (mem[jid]?.langCache) || 'English'
-}
-async function refreshLangCache(jid) {
-  const u = await getUser(jid)
-  mem[jid] = mem[jid] || {}
-  mem[jid].langCache = u?.language || 'English'
-}
-
-async function safeSend(id, text) {
-  try { await client.sendMessage(id, text) }
-  catch (e) { console.warn('[send fail]', e.message) }
-}
-
-// ---------- message handler ----------
-client.on('message', async m => {
-  const id = m.from
-  const name = m._data?.notifyName || m._data?.pushName || ''
-  const raw = (m.body || '').trim()
-  const txt = norm(raw)
-  const s = st(id)
-
-  /* bookkeeping */
-  await upsertUser(id, name)
-  await refreshLangCache(id)
-
-  /* greetings / reset */
-  const greetRE = /^(hi|hello|hey|yo|good\s*(morning|afternoon|evening))/i
-  if (greetRE.test(raw) || txt === 'menu' || txt === 'back') {
-    s.step = null; s.data = {}
-    return safeSend(id, str(id, 'menu'))
-  }
-
-  /* === active‑step flows === */
-
-  /* PERIOD TRACKING */
-  if (s.step === 'askDate') {
-    const mDate = raw.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/)
-    if (!mDate) return safeSend(id, str(id, 'invalidDate'))
-    const last = new Date(+mDate[3], mDate[2] - 1, +mDate[1])
-    if (isNaN(last)) return safeSend(id, str(id, 'notValidDate'))
-    const next = addD(last, CYCLE)
-    await UserUpdate.period(id, last.toISOString(), next.toISOString())
-    s.step = 'askRem'
-    return safeSend(id, str(id, 'askReminder', fmt(next)))
-  }
-  if (s.step === 'askRem') {
-    const wants = txt.startsWith('y') || txt.startsWith('e')
-    await UserUpdate.reminder(id, wants)
-    s.step = null
-    return safeSend(id, wants ? str(id, 'reminderYes') : str(id, 'reminderNo'))
-  }
-
-  /* SYMPTOM LOOP */
-  if (s.step === 'symLoop') {
-    if (txt === 'done') {
-      const n = s.data.count || 0
-      s.step = null
-      return safeSend(id, n ? str(id, 'symptomsDone', n, n > 1 ? 's' : '') : str(id, 'symptomsNothingSaved'))
+    console.error('Failed to initialize WhatsApp client:', error);
+    
+    // Log fatal error to Supabase
+    try {
+      await supabase.from('bot_logs').insert([{
+        log_type: 'fatal_error',
+        timestamp: new Date(),
+        details: `Fatal initialization error: ${error.message}`,
+        stack_trace: error.stack
+      }]);
+    } catch (err) {
+      console.error('Failed to log fatal error to Supabase:', err);
     }
-    if (txt === 'cancel') { s.step = null; return safeSend(id, str(id, 'symptomsCancel')) }
-    await Symptom.add(id, raw)
-    s.data.count = (s.data.count || 0) + 1
-    return safeSend(id, str(id, 'savedSymptom'))
+    
+    // Exit with error code
+    process.exit(1);
   }
-
-  /* EDUCATION */
-  if (s.step === 'edu') { /* unchanged */ }
-
-  /* LANGUAGE CHANGE */
-  if (s.step === 'lang') {
-    const newLang = Object.keys(STRINGS).find(l => l.toLowerCase().startsWith(raw.toLowerCase())) || raw
-    await UserUpdate.lang(id, newLang)
-    await refreshLangCache(id)
-    s.step = null
-    return safeSend(id, str(id, 'languageSet', newLang))
-  }
-
-  /* FEEDBACK */
-  if (s.step === 'fb1' && ['1', '2'].includes(txt)) {
-    s.data.response1 = txt
-    s.step = 'fb2'
-    return safeSend(id, str(id, 'feedbackQ2'))
-  }
-  if (s.step === 'fb2') {
-    await Feedback.add(id, s.data.response1, raw.trim())
-    s.step = null
-    return safeSend(id, str(id, 'feedbackThanks'))
-  }
-
-  /* === Menu picks (idle) === */
-  const pick = (t, w, n) => t === w || t === String(n) || t === `${n}.` || t === `${n})`
-
-  if (s.step === null && pick(txt, 'trackmyperiod', 1)) {
-    s.step = 'askDate'
-    return safeSend(id, str(id, 'trackPrompt'))
-  }
-  if (s.step === null && pick(txt, 'logsymptoms', 2)) {
-    s.step = 'symLoop'; s.data.count = 0
-    return safeSend(id, str(id, 'symptomPrompt'))
-  }
-  if (s.step === null && pick(txt, 'learnaboutsexualhealth', 3)) {
-    s.step = 'edu'
-    return safeSend(id, str(id, 'eduTopics'))
-  }
-  if (s.step === null && pick(txt, 'viewmycycle', 5)) {
-    const u = await getUser(id)
-    if (!u?.last_period) return safeSend(id, str(id, 'noPeriod'))
-    return safeSend(id, str(id, 'cycleInfo', fmt(new Date(u.last_period)), fmt(new Date(u.next_period))))
-  }
-  if (s.step === null && pick(txt, 'viewmysymptoms', 6)) {
-    const { data: rows } = await Symptom.list(id)
-    if (!rows?.length) return safeSend(id, str(id, 'noSymptoms'))
-    const symptomsText = rows.slice(0, 5).map(r => `• ${r.symptom}  _(${fmt(new Date(r.logged_at))})_`).join('\n')
-    return safeSend(id, str(id, 'symptomsHistory', symptomsText))
-  }
-  if (s.step === null && pick(txt, 'changelanguage', 7)) {
-    s.step = 'lang'
-    return safeSend(id, str(id, 'langPrompt'))
-  }
-  if (s.step === null && pick(txt, 'givefeedback', 8)) {
-    s.step = 'fb1'
-    return safeSend(id, str(id, 'feedbackQ1'))
-  }
-
-  /* fallback */
-  safeSend(id, str(id, 'fallback'))
-});
-
-/* ---------- periodic reminder ---------- */
-cron.schedule('0 9 * * *', async () => {
-  const today = new Date()
-  const { data: users } = await supabase
-    .from('users')
-    .select('jid,next_period,language')
-    .is('wants_reminder', true)
-    .not('next_period', 'is', null)
-
-  for (const u of users || []) {
-    const diff = Math.floor((new Date(u.next_period) - today) / 86400000)
-    if (diff === 3) {
-      const lang = u.language || 'English'
-      const msg = format((STRINGS[lang]?.reminderYes ?? STRINGS.English.reminderYes), fmt(new Date(u.next_period)))
-      await safeSend(u.jid, '🩸 ' + msg)
-    }
-  }
-  console.log('[Reminder task] done')
-});
+})();

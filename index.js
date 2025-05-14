@@ -9,6 +9,9 @@ const fs = require('fs').promises;
 const express = require('express');
 const app = express();
 
+// Global client instance
+let client = null;
+
 // Global error handler for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -25,7 +28,12 @@ process.on('uncaughtException', (error) => {
 const PORT = process.env.PORT || 8080;
 
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  const status = client && client.pupBrowser ? 'ok' : 'initializing';
+  res.status(200).json({ 
+    status,
+    timestamp: new Date().toISOString(),
+    clientReady: client ? client.info !== undefined : false
+  });
 });
 
 app.listen(PORT, () => {
@@ -37,34 +45,6 @@ if (!process.env.SUPA_URL || !process.env.SUPA_KEY) {
   throw new Error('Missing SUPA_URL or SUPA_KEY in environment');
 }
 const supabase = createClient(process.env.SUPA_URL, process.env.SUPA_KEY);
-
-// Define Chrome executable path based on common locations
-const CHROME_PATHS = [
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium-browser',
-  '/usr/bin/chromium',
-  '/snap/bin/chromium',
-  // Add more potential paths if needed
-];
-
-// Function to find any installed browser
-async function findChromePath() {
-  const fs = require('fs');
-  for (const path of CHROME_PATHS) {
-    try {
-      if (fs.existsSync(path)) {
-        console.log(`Found browser at: ${path}`);
-        return path;
-      }
-    } catch (e) {
-      // Continue checking other paths
-    }
-  }
-  
-  // Add fallback to /usr/bin/chromium-browser which is common in containerized environments
-  console.log('No standard Chrome installation found. Using fallback path.');
-  return '/usr/bin/chromium-browser';
-}
 
 // Function to clean up session files
 async function cleanupSession() {
@@ -112,8 +92,17 @@ async function initializeWhatsApp() {
     // Clean up any stale session files first
     await cleanupSession();
     
+    // If there's an existing client, destroy it first
+    if (client) {
+      try {
+        await client.destroy();
+      } catch (e) {
+        console.warn('Error destroying existing client:', e);
+      }
+    }
+    
     // Configure the WhatsApp client with the proper browser path
-    const client = new Client({ 
+    client = new Client({ 
       authStrategy: new SupaAuth(),
       puppeteer: { 
         headless: true,
@@ -367,7 +356,7 @@ Danna wannan hanyar don tattaunawa kai tsaye da ma\'aikatan sayarwarmu don tabba
 {2}
 
 Mun gode da zaɓen Venille!`,
-    orderVendorMessage: `�� *Odar Venille Pads*
+    orderVendorMessage: `🆕 *Odar Venille Pads*
 
 Daga : {0}
 JID  : {1}

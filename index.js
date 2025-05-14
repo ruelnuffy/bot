@@ -1,10 +1,10 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-// Commented out SupaAuth as we're switching to LocalAuth for reliability
-// const SupaAuth = require('./supa-auth');
+const { Client } = require('whatsapp-web.js');
+// Switching from LocalAuth to SupaAuth for better container compatibility
+const SupaAuth = require('./supa-auth');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');   
-const puppeteer = require('puppeteer-core');  // Ensure puppeteer-core is imported
+const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -40,46 +40,6 @@ async function findChromePath() {
   // Add fallback to /usr/bin/chromium-browser which is common in containerized environments
   console.log('No standard Chrome installation found. Using fallback path.');
   return '/usr/bin/chromium-browser';
-}
-
-// Function to clean up session files
-async function cleanupSession() {
-  try {
-    const sessionDir = path.join(__dirname, '.wwebjs_auth/session');
-    console.log('Cleaning up session directory:', sessionDir);
-    
-    // Check if directory exists
-    try {
-      await fs.access(sessionDir);
-    } catch (e) {
-      console.log('No session directory found, skipping cleanup');
-      return;
-    }
-    
-    // Remove SingletonLock file if it exists
-    try {
-      await fs.unlink(path.join(sessionDir, 'SingletonLock'));
-      console.log('Removed stale SingletonLock file');
-    } catch (e) {
-      // File might not exist, that's fine
-      console.log('No SingletonLock file found');
-    }
-    
-    // Optionally, delete other potentially problematic files
-    const knownProblemFiles = ['SingletonCookie', 'SingletonSocket'];
-    for (const file of knownProblemFiles) {
-      try {
-        await fs.unlink(path.join(sessionDir, file));
-        console.log(`Removed stale ${file} file`);
-      } catch (e) {
-        // Files might not exist, that's fine
-      }
-    }
-    
-  } catch (error) {
-    console.warn('Error during session cleanup:', error);
-    // Continue anyway, we'll just log the error
-  }
 }
 
 // Add more robust error handling for browser crashes
@@ -200,11 +160,37 @@ function formatUptime(seconds) {
   return `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
 
+// Setup a basic HTTP server for health checks
+function setupHealthCheckServer() {
+  const http = require('http');
+  const PORT = process.env.PORT || 8080;
+  
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        status: 'ok', 
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+      }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  
+  server.listen(PORT, () => {
+    console.log(`Health check server running on port ${PORT}`);
+  });
+  
+  return server;
+}
+
 // ───────── WhatsApp client ─────────
 (async () => {
   try {
-    // Clean up any stale session files first
-    await cleanupSession();
+    // Start health check server
+    const healthServer = setupHealthCheckServer();
     
     // Try to find Chrome path but don't fail if not found
     let chromePath;
@@ -215,21 +201,15 @@ function formatUptime(seconds) {
       chromePath = null; // Let puppeteer find Chrome on its own
     }
     
-    // Use a completely fresh userDataDir
-    const userDataDir = path.join(__dirname, '.wwebjs_auth', 'session-' + Date.now());
-    console.log('Using fresh user data directory:', userDataDir);
-    
-    // Configure the WhatsApp client with the proper browser path
+    // Configure the WhatsApp client with SupaAuth and proper browser path
     const client = new Client({ 
-      authStrategy: new LocalAuth({
+      authStrategy: new SupaAuth({
         clientId: 'whatsapp-bot',
-        dataPath: userDataDir
+        tableName: 'whatsapp_sessions'
       }),
       puppeteer: { 
         headless: true,
         executablePath: chromePath,
-        // Set a unique user data directory to avoid conflicts
-        userDataDir: userDataDir,
         // Set a longer timeout for browser launch
         timeout: 120000,
         // More aggressive browser args for containerized environments
@@ -291,16 +271,6 @@ function formatUptime(seconds) {
     
     client.on('auth_failure', e => {
       console.error('⚠️ Auth failure', e);
-      // Delete the session directory and try again
-      const fs = require('fs');
-      try {
-        if (fs.existsSync(userDataDir)) {
-          console.log('Removing failed auth session directory');
-          fs.rmSync(userDataDir, { recursive: true, force: true });
-        }
-      } catch (err) {
-        console.error('Failed to remove auth directory:', err);
-      }
       
       // Wait a bit and try again
       setTimeout(() => {
@@ -479,6 +449,9 @@ function formatUptime(seconds) {
     process.on('SIGINT', async () => {
       console.log('Received SIGINT, shutting down gracefully...');
       try {
+        // Close health check server
+        healthServer.close();
+        
         // Log shutdown
         await supabase.from('bot_logs').insert([{
           log_type: 'shutdown',

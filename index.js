@@ -382,24 +382,26 @@ client.on('message', async m => {
 })
 
 /* ---------- periodic reminder ---------- */
-cron.schedule('0 9 * * *', async () => {
-  const today = new Date()
-  const { data: users } = await supabase
-    .from('users')
-    .select('jid,next_period,language')
-    .is('wants_reminder', true)
-    .not('next_period', 'is', null)
+ cron.schedule('0 9 * * *', async () => {
+      const today = new Date()
+      const { data: users } = await supabase
+        .from('users')
+        .select('jid,next_period,language')
+        .is('wants_reminder', true)
+        .not('next_period', 'is', null)
 
-  for (const u of users || []) {
-    const diff = Math.floor((new Date(u.next_period) - today) / 86400000)
-    if (diff === 3) {
-      const lang = u.language || 'English'
-      const msg = format((STRINGS[lang]?.reminderYes ?? STRINGS.English.reminderYes), fmt(new Date(u.next_period)))
-      await safeSend(u.jid, '🩸 ' + msg)
-    }
+      for (const u of users || []) {
+        const diff = Math.floor((new Date(u.next_period) - today) / 86400000)
+        if (diff === 3) {
+          const lang = u.language || 'English'
+          const msg = format((STRINGS[lang]?.reminderYes ?? STRINGS.English.reminderYes), fmt(new Date(u.next_period)))
+          await safeSend(u.jid, '🩸 ' + msg)
+        }
+      }
+      console.log('[Reminder task] done')
+    });
+  } catch (error) {
+    console.error('❌ Fatal error:', error);
+    process.exit(1); // Exit with error code to let the platform know there was an issue
   }
-  console.log('[Reminder task] done')
-})
-
-
 })();

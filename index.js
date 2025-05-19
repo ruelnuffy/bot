@@ -1,4 +1,19 @@
 // index.js
+// catch literally _everything_
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🔴 UNHANDLED REJECTION:", reason, {
+    message: reason?.message,
+    stack: reason?.stack,
+    error: reason?.error,        // in case it’s an ErrorEvent
+    filename: reason?.filename,  // DOM ErrorEvent props
+    lineno: reason?.lineno,
+    colno: reason?.colno,
+  });
+});
+process.on("uncaughtException", (err) => {
+  console.error("🔴 UNCAUGHT EXCEPTION:", err, err.stack);
+});
+
 const { Client } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { createClient } = require("@supabase/supabase-js");
@@ -175,7 +190,7 @@ function findChromePath() {
     });
 
     console.log('🚀 Initializing client…');
-    client.initialize();
+    await client.initialize();
 
     /* ---------- helpers (dates, strings, etc) ---------- */
     const CYCLE = 28;

@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install Chrome + deps
+# Install Chrome + libs
 RUN apt-get update && apt-get install -y \
     chromium \
     libnss3 libxss1 libasound2 libatk1.0-0 libgtk-3-0 libgbm-dev \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 libpango-1.0-0 libpangocairo-1.0-0 libxcb1 \
   --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer not to download its own Chromium
+# Tell Puppeteer to skip its download and use the system Chrome
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
@@ -17,4 +17,4 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 
-CMD ["node", "index.js"]
+CMD ["npm", "start"]

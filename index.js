@@ -63,7 +63,6 @@ function findChromePath() {
       }),
       puppeteer: {
         headless: true,
-        executablePath: chromePath,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",

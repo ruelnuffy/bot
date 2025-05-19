@@ -43,6 +43,7 @@ RUN apt-get update \
     libxss1 \
     libxtst6 \
     xdg-utils \
+    li:contentReference[oaicite:5]{index=5} \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

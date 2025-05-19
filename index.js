@@ -34,9 +34,9 @@ function findChromePath() {
 // ───────── main ─────────
 (async function main() {
   try {
-    // Create a session directory with proper permissions
-    // Modified approach - don't try to chmod in containerized environments
-    const sessionBasePath = path.join(__dirname, ".wwebjs_auth");
+    // Use a simpler approach for containerized environments
+    // Create session directory in /tmp which typically has proper permissions
+    const sessionBasePath = path.join("/tmp", ".wwebjs_auth");
     const sessionDir = path.join(sessionBasePath, "session");
     
     // Create directories if they don't exist
@@ -50,17 +50,6 @@ function findChromePath() {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // Safer permission handling - try/catch to avoid crashing
-    console.log("Setting directory permissions (if possible)");
-    try {
-      fs.chmodSync(sessionBasePath, 0o755);
-      fs.chmodSync(sessionDir, 0o755);
-      console.log("✅ Permissions set successfully");
-    } catch (error) {
-      console.log("⚠️ Could not set permissions, continuing anyway:", error.message);
-      // Continue execution even if chmod fails
-    }
-
     // Generate a unique session identifier for logging purposes
     const sessionId = `session-${Date.now()}`;
     console.log("📂 Session ID:", sessionId);
@@ -70,7 +59,7 @@ function findChromePath() {
     const client = new Client({
       authStrategy: new SupaAuth({
         tableName: "whatsapp_sessions",
-        dataPath: sessionBasePath, // This is the correct way to customize the data location
+        dataPath: sessionBasePath,
       }),
       puppeteer: {
         headless: true,
@@ -80,15 +69,31 @@ function findChromePath() {
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
+          "--disable-web-security",
+          "--disable-extensions",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-renderer-backgrounding",
+          "--disable-features=TranslateUI",
+          "--disable-ipc-flooding-protection",
+          // Use /tmp for Chrome user data to avoid permission issues
+          `--user-data-dir=/tmp/chrome-${sessionId}`,
+          // Disable singleton check to prevent lock file issues
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-default-apps",
+          // Additional arguments for containerized environments
           "--single-process",
           "--no-zygote",
-          
-          // Add these arguments to specify a user data directory with proper permissions
-          `--user-data-dir=${sessionDir}`,
+          "--disable-background-networking",
+          "--disable-sync",
+          "--metrics-recording-only",
+          "--safebrowsing-disable-auto-update",
+          "--disable-component-update",
         ],
         ignoreHTTPSErrors: true,
         timeout: 300_000,
-        dumpio: true,
+        dumpio: false, // Disable dumpio to reduce noise in logs
       },
     });
 
@@ -96,8 +101,9 @@ function findChromePath() {
       console.log('🔍 QR Code — scan with your phone:');
       qrcode.generate(qr, { small: true });
       try {
-        fs.writeFileSync(path.resolve(__dirname,'last-qr.txt'), qr);
-        console.log('💾 QR saved to last-qr.txt');
+        // Use /tmp for QR file as well
+        fs.writeFileSync(path.resolve('/tmp','last-qr.txt'), qr);
+        console.log('💾 QR saved to /tmp/last-qr.txt');
       } catch(e) {
         console.warn('Could not save QR:', e.message);
       }
@@ -118,27 +124,55 @@ function findChromePath() {
     client.on('ready', () => {
       console.log('🎉 WhatsApp is ready!');
       // remove any lingering QR file
-      try { fs.unlinkSync('last-qr.txt'); } catch {}
+      try { fs.unlinkSync('/tmp/last-qr.txt'); } catch {}
     });
 
     client.on('auth_failure', e => {
       console.error('⚠️ Auth failure:', e);
+      // Don't auto-restart on auth failure, let user handle it
     });
 
     client.on('disconnected', reason => {
       console.warn('⚠️ Disconnected:', reason);
-      setTimeout(() => {
-        console.log('🔄 Reinitializing after disconnect…');
-        client.initialize();
-      }, 5_000);
+      // Only restart for certain disconnect reasons
+      if (reason !== 'LOGOUT') {
+        setTimeout(() => {
+          console.log('🔄 Reinitializing after disconnect…');
+          client.initialize();
+        }, 5_000);
+      }
     });
 
     client.on('error', err => {
       console.error('🐞 Client error:', err);
-      setTimeout(() => {
-        console.log('🔄 Reinitializing after error…');
-        client.initialize();
-      }, 10_000);
+      // Only restart for non-fatal errors
+      if (!err.message.includes('Protocol error') && !err.message.includes('Target closed')) {
+        setTimeout(() => {
+          console.log('🔄 Reinitializing after error…');
+          client.initialize();
+        }, 10_000);
+      }
+    });
+
+    // Handle process termination gracefully
+    process.on('SIGTERM', async () => {
+      console.log('🔄 Received SIGTERM, gracefully shutting down...');
+      try {
+        await client.destroy();
+      } catch (e) {
+        console.warn('Error during shutdown:', e.message);
+      }
+      process.exit(0);
+    });
+
+    process.on('SIGINT', async () => {
+      console.log('🔄 Received SIGINT, gracefully shutting down...');
+      try {
+        await client.destroy();
+      } catch (e) {
+        console.warn('Error during shutdown:', e.message);
+      }
+      process.exit(0);
     });
 
     console.log('🚀 Initializing client…');

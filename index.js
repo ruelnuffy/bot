@@ -111,17 +111,38 @@ function findChromePath() {
       },
     });
 
-    client.on('qr', qr => {
-      console.log('🔍 QR Code — scan with your phone:');
-      qrcode.generate(qr, { small: true });
-      try {
-        // Use /tmp for QR file as well
-        fs.writeFileSync(path.resolve('/tmp','last-qr.txt'), qr);
-        console.log('💾 QR saved to /tmp/last-qr.txt');
-      } catch(e) {
-        console.warn('Could not save QR:', e.message);
-      }
-    });
+client.on('qr', qr => {
+  console.log('🔍 WhatsApp Authentication Required');
+  console.log('='.repeat(80));
+  
+  // Only show ASCII QR in local development
+  if (process.env.NODE_ENV === 'development' || !process.env.RAILWAY_ENVIRONMENT) {
+    console.log('📱 Scan this QR code with WhatsApp:');
+    qrcode.generate(qr, { small: true });
+  } else {
+    // In production (Railway), provide a clickable QR image
+    console.log('📱 SCAN THIS QR CODE WITH WHATSAPP:');
+    console.log('');
+    console.log('🔗 Click this link to view QR code:');
+    console.log(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`);
+    console.log('');
+    console.log('📋 Or use this raw data in any QR code generator:');
+    console.log(qr);
+    console.log('');
+    console.log('⚠️  NOTE: This QR code is specifically for WhatsApp Web authentication');
+    console.log('    Open WhatsApp > Settings > Linked Devices > Link Device');
+  }
+  
+  console.log('='.repeat(80));
+  
+  try {
+    // Save QR data to file for backup
+    fs.writeFileSync(path.resolve('/tmp','last-qr.txt'), qr);
+    console.log('💾 QR data saved to /tmp/last-qr.txt');
+  } catch(e) {
+    console.warn('Could not save QR:', e.message);
+  }
+});
 
     client.on('authenticated', async session => {
       console.log('✅ Authenticated! Session upserting to Supabase…');
